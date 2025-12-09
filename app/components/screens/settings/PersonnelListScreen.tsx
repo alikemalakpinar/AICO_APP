@@ -3,6 +3,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import React, { useState, useEffect } from 'react';
 import ThemedText from '../../ThemedText';
 import IconSymbol from '../../ui/IconSymbol';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../../../constants/Api';
 
 interface Personnel {
   id: number;
@@ -45,7 +46,7 @@ export default function PersonnelListScreen({ onClose, userRole }: PersonnelList
 
   const fetchPersonnel = async () => {
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/users');
+      const response = await fetchWithTimeout(API_ENDPOINTS.users);
       const data = await response.json();
       // Patronu en üste al ve diğerlerini alfabetik sırala
       const sortedData = data.sort((a: Personnel, b: Personnel) => {
@@ -81,7 +82,7 @@ export default function PersonnelListScreen({ onClose, userRole }: PersonnelList
     if (!selectedPerson) return;
 
     try {
-      const response = await fetch(`http://192.168.0.13:3000/api/users/${selectedPerson.id}/role`, {
+      const response = await fetchWithTimeout(`${API_ENDPOINTS.users}/${selectedPerson.id}/role`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -92,7 +93,7 @@ export default function PersonnelListScreen({ onClose, userRole }: PersonnelList
       if (!response.ok) throw new Error('Yetki güncellenemedi');
 
       // Güncelleme başarılı
-      setPersonnel(personnel.map(p => 
+      setPersonnel(personnel.map(p =>
         p.id === selectedPerson.id ? { ...p, yetki: newRole } : p
       ));
       setShowRoleModal(false);
@@ -119,7 +120,7 @@ export default function PersonnelListScreen({ onClose, userRole }: PersonnelList
         permissions.push('belge_olusturma');
       }
 
-      const response = await fetch(`http://192.168.0.13:3000/api/users/${selectedPerson.id}/permissions`, {
+      const response = await fetchWithTimeout(`${API_ENDPOINTS.users}/${selectedPerson.id}/permissions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -144,7 +145,7 @@ export default function PersonnelListScreen({ onClose, userRole }: PersonnelList
       if (!selectedPerson) return;
 
       try {
-        const response = await fetch(`http://192.168.0.13:3000/api/users/${selectedPerson.id}/permissions`);
+        const response = await fetchWithTimeout(`${API_ENDPOINTS.users}/${selectedPerson.id}/permissions`);
         const data = await response.json();
 
         setAdditionalPermissions({

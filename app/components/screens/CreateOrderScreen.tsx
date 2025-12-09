@@ -5,6 +5,7 @@ import IconSymbol from '../ui/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 // Konum listesi
 const LOCATIONS = [
@@ -144,7 +145,7 @@ const createCurvedPath = (startCoords: Coordinates, endCoords: Coordinates) => {
 // Sipariş kaydetme fonksiyonu
 const saveOrder = async (orderData: any) => {
   try {
-    const response = await fetch('http://192.168.0.13:3000/api/orders', {
+    const response = await fetchWithTimeout(API_ENDPOINTS.orders, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

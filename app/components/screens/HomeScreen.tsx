@@ -13,6 +13,7 @@ import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - SPACING.base * 3) / 2;
@@ -100,7 +101,7 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
 
   const fetchOrderStats = async () => {
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/orders');
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders);
       const orders = await response.json();
 
       const totalOrders = orders.length;

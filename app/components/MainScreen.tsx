@@ -18,6 +18,7 @@ import * as Sharing from 'expo-sharing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 
 // Import screens
 import HomeScreen from './screens/HomeScreen';
@@ -166,7 +167,7 @@ export default function MainScreen() {
 
   const generateCSV = async () => {
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/orders');
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders);
       const orders: Order[] = await response.json();
 
       const headers = [
