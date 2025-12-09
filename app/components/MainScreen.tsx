@@ -15,8 +15,11 @@ import ThemedText from './ThemedText';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
+
+const SESSION_KEY = 'user_session';
 
 // Import screens
 import HomeScreen from './screens/HomeScreen';
@@ -76,7 +79,11 @@ export default function MainScreen() {
         {
           text: 'Cikis Yap',
           style: 'destructive',
-          onPress: () => router.replace('/')
+          onPress: async () => {
+            // Clear saved session
+            await AsyncStorage.removeItem(SESSION_KEY);
+            router.replace('/');
+          }
         }
       ]
     );
@@ -108,11 +115,14 @@ export default function MainScreen() {
     }).start();
   }, []);
 
+  // Check if user can create orders
+  const canCreateOrder = userRole !== 'Depo Görevlisi' && userRole !== 'Lojistik Sorumlusu';
+
   const getCurrentScreen = () => {
     const currentTab = tabs[activeTab];
     switch (currentTab.label) {
       case 'Ana Sayfa':
-        return <HomeScreen onTabChange={handleTabPress} userName={userName as string} userRole={userRole as string} permissions={permissions} />;
+        return <HomeScreen onTabChange={handleTabPress} userName={userName as string} userRole={userRole as string} permissions={permissions} canCreateOrder={canCreateOrder} />;
       case 'Siparis':
         return <CreateOrderScreen />;
       case 'Siparisler':
@@ -122,7 +132,7 @@ export default function MainScreen() {
       case 'Ayarlar':
         return <SettingsScreen userRole={userRole as string} />;
       default:
-        return <HomeScreen onTabChange={handleTabPress} userName={userName as string} userRole={userRole as string} permissions={permissions} />;
+        return <HomeScreen onTabChange={handleTabPress} userName={userName as string} userRole={userRole as string} permissions={permissions} canCreateOrder={canCreateOrder} />;
     }
   };
 

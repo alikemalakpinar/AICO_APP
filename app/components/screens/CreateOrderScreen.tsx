@@ -868,6 +868,9 @@ export default function CreateOrderScreen() {
         </TouchableOpacity>
 
         {renderOverviewModal()}
+
+        {/* Bottom padding for navigation bar */}
+        <View style={{ height: 120 }} />
       </ScrollView>
     </View>
   );

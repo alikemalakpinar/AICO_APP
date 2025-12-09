@@ -33,9 +33,10 @@ interface HomeScreenProps {
   userName: string;
   userRole: string;
   permissions?: string[];
+  canCreateOrder?: boolean;
 }
 
-export default function HomeScreen({ onTabChange, userName, userRole, permissions = [] }: HomeScreenProps) {
+export default function HomeScreen({ onTabChange, userName, userRole, permissions = [], canCreateOrder = true }: HomeScreenProps) {
   const [stats, setStats] = useState<OrderStats>({
     totalOrders: 0,
     monthlyRevenue: 0,
@@ -173,24 +174,30 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
     },
   ];
 
+  // Tab indices depend on whether user can create orders
+  // If canCreateOrder: [Ana Sayfa(0), Siparis(1), Siparisler(2), Takvim(3), Ayarlar(4)]
+  // If !canCreateOrder: [Ana Sayfa(0), Siparisler(1), Takvim(2), Ayarlar(3)]
+  const ordersTabIndex = canCreateOrder ? 2 : 1;
+  const calendarTabIndex = canCreateOrder ? 3 : 2;
+
   const quickActions = [
-    {
+    ...(canCreateOrder ? [{
       title: 'Yeni Sipariş',
       subtitle: 'Sipariş oluştur',
       icon: 'plus',
       onPress: () => onTabChange(1),
-    },
+    }] : []),
     {
       title: 'Siparişler',
       subtitle: 'Tümünü gör',
       icon: 'format-list-bulleted',
-      onPress: () => onTabChange(2),
+      onPress: () => onTabChange(ordersTabIndex),
     },
     {
       title: 'Takvim',
       subtitle: 'Planla',
       icon: 'calendar-outline',
-      onPress: () => onTabChange(3),
+      onPress: () => onTabChange(calendarTabIndex),
     },
   ];
 
