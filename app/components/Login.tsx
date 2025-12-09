@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -131,13 +132,13 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/login', {
+      const response = await fetchWithTimeout(API_ENDPOINTS.login, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(loginData),
-      });
+      }, 15000);
 
       const data = await response.json();
 
@@ -154,7 +155,7 @@ export default function Login() {
         }
       });
     } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Giris yapilamadi');
+      Alert.alert('Hata', error.message || 'Sunucuya baglanilamadi. Backend calistigini kontrol edin.');
     } finally {
       setIsLoading(false);
     }
@@ -173,13 +174,13 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/register', {
+      const response = await fetchWithTimeout(API_ENDPOINTS.register, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
-      });
+      }, 15000);
 
       const data = await response.json();
 
@@ -192,7 +193,7 @@ export default function Login() {
       setLoginData({ email: formData.email, sifre: '' });
       setFormData({ Ad_Soyad: '', email: '', telefon: '', sifre: '', sifre_tekrar: '' });
     } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Bir hata olustu');
+      Alert.alert('Hata', error.message || 'Sunucuya baglanilamadi. Backend calistigini kontrol edin.');
     } finally {
       setIsLoading(false);
     }

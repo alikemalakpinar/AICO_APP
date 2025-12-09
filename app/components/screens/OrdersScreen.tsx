@@ -15,6 +15,7 @@ import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 const { width } = Dimensions.get('window');
 
@@ -91,7 +92,7 @@ export default function OrdersScreen() {
 
   const fetchOrders = async () => {
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/orders');
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders);
       const data = await response.json();
       setOrders(data);
       setFilteredOrders(data);
@@ -145,7 +146,7 @@ export default function OrdersScreen() {
 
   const handleProcessUpdate = async (orderId: number, newProcess: string) => {
     try {
-      const response = await fetch(`http://192.168.0.13:3000/api/orders/${orderId}/process`, {
+      const response = await fetchWithTimeout(`${API_ENDPOINTS.orders}/${orderId}/process`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ process: newProcess }),

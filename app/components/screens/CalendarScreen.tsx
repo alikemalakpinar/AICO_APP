@@ -13,6 +13,7 @@ import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 type ViewType = 'month' | 'week' | 'day';
 type DateData = {
@@ -76,7 +77,7 @@ export default function CalendarScreen() {
 
   const fetchOrders = async () => {
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/orders');
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders);
       const orders: Order[] = await response.json();
 
       const marked: any = {};
@@ -99,7 +100,7 @@ export default function CalendarScreen() {
   const fetchOrdersByDate = async (date: string) => {
     setLoading(true);
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/orders');
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders);
       const orders: Order[] = await response.json();
 
       const dateOrders = orders.filter(order => order.date.split('T')[0] === date);
@@ -113,7 +114,7 @@ export default function CalendarScreen() {
 
   const calculateStats = async () => {
     try {
-      const response = await fetch('http://192.168.0.13:3000/api/orders');
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders);
       const orders: Order[] = await response.json();
 
       const currentMonth = new Date(selectedDate).getMonth();
