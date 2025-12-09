@@ -128,7 +128,7 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
           description: 'Sifre ve guvenlik ayarlari',
           type: 'link',
           onPress: () => setCurrentModal('security'),
-          color: COLORS.secondary.main,
+          color: COLORS.primary.accent,
         },
       ],
     },
@@ -228,7 +228,7 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
           value={item.value}
           onValueChange={item.onValueChange}
           trackColor={{ false: COLORS.light.border, true: `${COLORS.primary.main}50` }}
-          thumbColor={item.value ? COLORS.primary.main : COLORS.light.surfaceVariant}
+          thumbColor={item.value ? COLORS.primary.main : COLORS.neutral[200]}
           ios_backgroundColor={COLORS.light.border}
         />
       ) : (
