@@ -1,11 +1,23 @@
-import { StyleSheet, View, TouchableOpacity, Animated, Platform, Dimensions, Image, Alert, Share } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  Animated,
+  Dimensions,
+  Image,
+  Alert,
+  StatusBar,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import IconSymbol from './ui/IconSymbol';
 import ThemedText from './ThemedText';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
 
 // Import screens
 import HomeScreen from './screens/HomeScreen';
@@ -14,7 +26,7 @@ import OrdersScreen from './screens/OrdersScreen';
 import CalendarScreen from './screens/CalendarScreen';
 import SettingsScreen from './screens/SettingsScreen';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 interface Order {
   id: number;
@@ -39,41 +51,79 @@ interface Product {
   price: string;
 }
 
+interface TabItem {
+  icon: string;
+  iconFilled: string;
+  label: string;
+  component: React.ComponentType<any>;
+}
+
 export default function MainScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const insets = useSafeAreaInsets();
   const { userName, userRole, permissions: permissionsStr } = useLocalSearchParams();
   const permissions = permissionsStr ? JSON.parse(permissionsStr as string) : [];
 
+  // Animation refs
+  const tabAnimations = useRef<Animated.Value[]>([]).current;
+  const indicatorPosition = useRef(new Animated.Value(0)).current;
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+
   const handleLogout = () => {
-    router.replace('/');
+    Alert.alert(
+      'Cikis Yap',
+      'Hesabinizdan cikis yapmak istediginize emin misiniz?',
+      [
+        { text: 'Iptal', style: 'cancel' },
+        {
+          text: 'Cikis Yap',
+          style: 'destructive',
+          onPress: () => router.replace('/')
+        }
+      ]
+    );
   };
 
-  const allTabs = [
-    { icon: 'home', label: 'Ana Sayfa', component: HomeScreen },
-    { icon: 'plus-box', label: 'Sipariş Oluştur', component: CreateOrderScreen },
-    { icon: 'shopping', label: 'Siparişler', component: OrdersScreen },
-    { icon: 'calendar', label: 'Takvim', component: CalendarScreen },
-    { icon: 'cog', label: 'Ayarlar', component: SettingsScreen },
+  const allTabs: TabItem[] = [
+    { icon: 'home-outline', iconFilled: 'home', label: 'Ana Sayfa', component: HomeScreen },
+    { icon: 'plus-box-outline', iconFilled: 'plus-box', label: 'Siparis', component: CreateOrderScreen },
+    { icon: 'shopping-outline', iconFilled: 'shopping', label: 'Siparisler', component: OrdersScreen },
+    { icon: 'calendar-outline', iconFilled: 'calendar', label: 'Takvim', component: CalendarScreen },
+    { icon: 'cog-outline', iconFilled: 'cog', label: 'Ayarlar', component: SettingsScreen },
   ];
 
   // Filter tabs based on user role
   const tabs = allTabs.filter(tab => {
-    if (tab.label === 'Sipariş Oluştur') {
+    if (tab.label === 'Siparis') {
       return userRole !== 'Depo Görevlisi' && userRole !== 'Lojistik Sorumlusu';
     }
     return true;
   });
 
-  // Get current screen component based on tab label instead of index
+  // Initialize animations
+  useEffect(() => {
+    tabs.forEach((_, index) => {
+      if (!tabAnimations[index]) {
+        tabAnimations[index] = new Animated.Value(index === 0 ? 1 : 0);
+      }
+    });
+
+    // Header fade in
+    Animated.timing(headerOpacity, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   const getCurrentScreen = () => {
     const currentTab = tabs[activeTab];
     switch (currentTab.label) {
       case 'Ana Sayfa':
         return <HomeScreen onTabChange={handleTabPress} userName={userName as string} userRole={userRole as string} permissions={permissions} />;
-      case 'Sipariş Oluştur':
+      case 'Siparis':
         return <CreateOrderScreen />;
-      case 'Siparişler':
+      case 'Siparisler':
         return <OrdersScreen />;
       case 'Takvim':
         return <CalendarScreen />;
@@ -84,57 +134,47 @@ export default function MainScreen() {
     }
   };
 
-  const tabAnimations = useRef(tabs.map(() => new Animated.Value(0))).current;
-
   const handleTabPress = (index: number) => {
+    if (index === activeTab) return;
+
+    // Animate out old tab
+    Animated.timing(tabAnimations[activeTab], {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+
+    // Animate in new tab
+    Animated.spring(tabAnimations[index], {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+
+    // Move indicator
+    const tabWidth = (width - 40) / tabs.length;
+    Animated.spring(indicatorPosition, {
+      toValue: index * tabWidth,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+
     setActiveTab(index);
-    // Reset all animations
-    tabAnimations.forEach((anim, i) => {
-      if (i !== index) {
-        Animated.spring(anim, {
-          toValue: 0,
-          useNativeDriver: true,
-        }).start();
-      }
-    });
-    // Animate selected tab
-    Animated.sequence([
-      Animated.spring(tabAnimations[index], {
-        toValue: -10,
-        useNativeDriver: true,
-      }),
-      Animated.spring(tabAnimations[index], {
-        toValue: 0,
-        useNativeDriver: true,
-      }),
-    ]).start();
   };
 
   const generateCSV = async () => {
     try {
-      // Siparişleri API'den çek
       const response = await fetch('http://192.168.0.13:3000/api/orders');
       const orders: Order[] = await response.json();
 
-      // CSV başlıkları
       const headers = [
-        'Sipariş No',
-        'Tarih',
-        'Müşteri Adı',
-        'Ülke',
-        'Şehir',
-        'Telefon',
-        'Email',
-        'Satış Temsilcisi',
-        'Konferans',
-        'Acenta',
-        'Rehber',
-        'Durum',
-        'Ürünler',
-        'Toplam Tutar'
+        'Siparis No', 'Tarih', 'Musteri Adi', 'Ulke', 'Sehir', 'Telefon',
+        'Email', 'Satis Temsilcisi', 'Konferans', 'Acenta', 'Rehber', 'Durum',
+        'Urunler', 'Toplam Tutar'
       ].join(',');
 
-      // CSV satırlarını oluştur
       const rows = orders.map((order: Order) => {
         const products: Product[] = JSON.parse(order.products);
         const totalAmount = products.reduce((sum: number, product: Product) => {
@@ -159,124 +199,164 @@ export default function MainScreen() {
         ].join(',');
       });
 
-      // CSV içeriğini oluştur
       const csvContent = [headers, ...rows].join('\n');
-
-      // Dosya adını oluştur
       const fileName = `siparisler_${new Date().toISOString().split('T')[0]}.csv`;
       const filePath = `${FileSystem.documentDirectory}${fileName}`;
 
-      // Dosyayı kaydet
       await FileSystem.writeAsStringAsync(filePath, csvContent, {
         encoding: FileSystem.EncodingType.UTF8
       });
 
-      // Paylaşım için dosyayı aç
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(filePath, {
           mimeType: 'text/csv',
-          dialogTitle: 'Siparişler Raporu',
+          dialogTitle: 'Siparisler Raporu',
           UTI: 'public.comma-separated-values-text'
         });
       }
     } catch (error) {
-      console.error('CSV oluşturma hatası:', error);
-      Alert.alert(
-        'Hata',
-        'Belge oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.'
-      );
+      console.error('CSV olusturma hatasi:', error);
+      Alert.alert('Hata', 'Belge olusturulurken bir hata olustu.');
     }
   };
 
+  const tabWidth = (width - 40) / tabs.length;
+
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+
       {/* Header */}
-      <View style={[styles.headerContainer, { paddingTop: insets.top || 20 }]}>
-        <View style={styles.header}>
-          {/* Logo and Title */}
-          <View style={styles.headerLeft}>
-            <Image 
-              source={require('../../assets/images/aicologo.png')}
-              style={styles.headerLogo}
-              resizeMode="contain"
-            />
-            <ThemedText style={styles.headerTitle}>Koyuncu Halı</ThemedText>
-          </View>
+      <Animated.View style={[
+        styles.headerContainer,
+        { paddingTop: insets.top || 20, opacity: headerOpacity }
+      ]}>
+        <LinearGradient
+          colors={['#FFFFFF', '#F8FAFC']}
+          style={styles.headerGradient}
+        >
+          <View style={styles.header}>
+            {/* Logo and Brand */}
+            <View style={styles.headerLeft}>
+              <View style={styles.logoWrapper}>
+                <LinearGradient
+                  colors={COLORS.gradients.primary}
+                  style={styles.logoGradient}
+                >
+                  <Image
+                    source={require('../../assets/images/aicologo.png')}
+                    style={styles.headerLogo}
+                    resizeMode="contain"
+                  />
+                </LinearGradient>
+              </View>
+              <View style={styles.brandInfo}>
+                <ThemedText style={styles.headerTitle}>Koyuncu Hali</ThemedText>
+                <ThemedText style={styles.headerSubtitle}>{userRole}</ThemedText>
+              </View>
+            </View>
 
-          {/* Profile and Logout */}
-          <View style={styles.headerRight}>
-            {tabs[activeTab].label === 'Siparişler' && 
-             (userRole === 'Patron' || 
-              userRole === 'Operasyon Sorumlusu' || 
-              permissions.includes('belge_olusturma')) && (
-              <TouchableOpacity 
-                style={styles.createDocButton}
-                onPress={generateCSV}
+            {/* Actions */}
+            <View style={styles.headerRight}>
+              {tabs[activeTab].label === 'Siparisler' &&
+               (userRole === 'Patron' ||
+                userRole === 'Operasyon Sorumlusu' ||
+                permissions.includes('belge_olusturma')) && (
+                <TouchableOpacity
+                  style={styles.exportButton}
+                  onPress={generateCSV}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={COLORS.gradients.primary}
+                    style={styles.exportButtonGradient}
+                  >
+                    <IconSymbol name="file-export-outline" size={18} color="#fff" />
+                    <ThemedText style={styles.exportButtonText}>Disari Aktar</ThemedText>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.logoutButton}
+                onPress={handleLogout}
+                activeOpacity={0.7}
               >
-                <IconSymbol name="file-document-outline" size={20} color="#fff" />
-                <ThemedText style={styles.createDocText}>Belge Oluştur</ThemedText>
+                <IconSymbol name="logout" size={22} color={COLORS.error.main} />
               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.headerIcon} onPress={handleLogout}>
-              <IconSymbol name="logout" size={28} color="#00b51a" />
-            </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </View>
+        </LinearGradient>
+      </Animated.View>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <View style={styles.content}>
         {getCurrentScreen()}
       </View>
 
-      {/* Navigation Bar */}
-      <View style={[styles.navContainer, { paddingBottom: insets.bottom || 10 }]}>
-        <View style={styles.navbar}>
-          {tabs.map((tab, index) => (
-            <TouchableOpacity
-              key={index}
+      {/* Bottom Navigation */}
+      <View style={[styles.navWrapper, { paddingBottom: insets.bottom || 10 }]}>
+        <BlurView intensity={80} tint="light" style={styles.navBlur}>
+          <View style={styles.navbar}>
+            {/* Animated Indicator */}
+            <Animated.View
               style={[
-                styles.tabButton,
-                { width: `${100 / tabs.length}%` } // Dinamik genişlik
-              ]}
-              onPress={() => handleTabPress(index)}
-            >
-              <Animated.View style={[
-                styles.tabItem,
+                styles.indicator,
                 {
-                  transform: [{ translateY: tabAnimations[index] }]
+                  width: tabWidth - 16,
+                  transform: [{ translateX: Animated.add(indicatorPosition, 8) }]
                 }
-              ]}>
-                <IconSymbol
-                  name={tab.icon}
-                  size={24}
-                  color={activeTab === index ? '#00b51a' : '#666'}
-                  style={styles.icon}
-                />
-                <ThemedText style={[
-                  styles.tabLabel,
-                  activeTab === index && styles.activeLabel
-                ]}>
-                  {tab.label}
-                </ThemedText>
-              </Animated.View>
-            </TouchableOpacity>
-          ))}
-          <View style={styles.indicatorContainer}>
-            <Animated.View style={[
-              styles.indicator,
-              {
-                width: `${100 / tabs.length}%`,
-                transform: [{
-                  translateX: Animated.multiply(
-                    activeTab,
-                    Animated.multiply(width - 20, 1 / tabs.length)
-                  )
-                }]
-              }
-            ]} />
+              ]}
+            >
+              <LinearGradient
+                colors={COLORS.gradients.primary}
+                style={styles.indicatorGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              />
+            </Animated.View>
+
+            {/* Tab Buttons */}
+            {tabs.map((tab, index) => {
+              const isActive = activeTab === index;
+              const animation = tabAnimations[index] || new Animated.Value(0);
+
+              const scale = animation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 1.1],
+              });
+
+              const translateY = animation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, -4],
+              });
+
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.tabButton, { width: tabWidth }]}
+                  onPress={() => handleTabPress(index)}
+                  activeOpacity={0.7}
+                >
+                  <Animated.View
+                    style={[
+                      styles.tabContent,
+                      { transform: [{ scale }, { translateY }] }
+                    ]}
+                  >
+                    <IconSymbol
+                      name={isActive ? tab.iconFilled : tab.icon}
+                      size={24}
+                      color={isActive ? '#FFFFFF' : COLORS.light.text.tertiary}
+                    />
+                    {isActive && (
+                      <ThemedText style={styles.tabLabel}>{tab.label}</ThemedText>
+                    )}
+                  </Animated.View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        </View>
+        </BlurView>
       </View>
     </View>
   );
@@ -285,122 +365,133 @@ export default function MainScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-  },
-  content: {
-    flex: 1,
-  },
-  navContainer: {
-    width: '100%',
-    paddingHorizontal: 10,
-    backgroundColor: '#fff',
-  },
-  navbar: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 25,
-    paddingVertical: 12,
-    paddingHorizontal: 0,
-    width: '100%',
-    alignSelf: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    position: 'relative',
-  },
-  tabButton: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tabItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 5,
-  },
-  icon: {
-    marginBottom: 3,
-  },
-  tabLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
-  activeLabel: {
-    color: '#00b51a',
-    fontWeight: '600',
-  },
-  indicatorContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    alignItems: 'flex-start',
-  },
-  indicator: {
-    height: 3,
-    backgroundColor: '#00b51a',
-    borderRadius: 3,
-    position: 'absolute',
-    bottom: 0,
+    backgroundColor: COLORS.light.background,
   },
   headerContainer: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    zIndex: 100,
+  },
+  headerGradient: {
+    borderBottomLeftRadius: RADIUS.xl,
+    borderBottomRightRadius: RADIUS.xl,
+    ...SHADOWS.md,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.md,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  logoWrapper: {
+    marginRight: SPACING.md,
+  },
+  logoGradient: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
   headerLogo: {
-    width: 40,
-    height: 40,
-    marginRight: 8,
+    width: 30,
+    height: 30,
+  },
+  brandInfo: {
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#00b51a',
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+  },
+  headerSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.primary.main,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.sm,
   },
-  headerIcon: {
-    padding: 8,
-    marginLeft: 8,
+  exportButton: {
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
   },
-  createDocButton: {
+  exportButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#00b51a',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginRight: 12,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.xs,
   },
-  createDocText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
+  exportButtonText: {
+    color: '#FFFFFF',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
-}); 
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.error.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    flex: 1,
+  },
+  navWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SPACING.lg,
+  },
+  navBlur: {
+    borderRadius: RADIUS['2xl'],
+    overflow: 'hidden',
+    ...SHADOWS.xl,
+  },
+  navbar: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: RADIUS['2xl'],
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: 0,
+    position: 'relative',
+  },
+  indicator: {
+    position: 'absolute',
+    top: SPACING.sm,
+    bottom: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+  },
+  indicatorGradient: {
+    flex: 1,
+    borderRadius: RADIUS.xl,
+  },
+  tabButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    zIndex: 1,
+  },
+  tabContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  tabLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFFFFF',
+    marginTop: 2,
+  },
+});

@@ -1,12 +1,27 @@
-import { View, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Modal, Alert } from 'react-native';
-import React, { useState, useEffect } from 'react';
+import {
+  View,
+  StyleSheet,
+  TextInput,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  RefreshControl,
+  Animated,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+
+const { width } = Dimensions.get('window');
 
 interface Order {
   id: number;
-  date: string;
   order_no: string;
+  date: string;
   customer_name: string;
   customer_address: string;
   customer_country: string;
@@ -17,24 +32,25 @@ interface Order {
   conference: string;
   agency: string;
   guide: string;
-  products: string;
   process: string;
+  products: string;
 }
 
-export const OrdersHeader = ({ navigation }: any) => (
-  <View style={styles.headerContainer}>
-    <TouchableOpacity 
-      style={styles.createDocButton}
-      onPress={() => {
-        // Belge oluşturma fonksiyonu buraya gelecek
-        Alert.alert('Bilgi', 'Belge oluşturma özelliği yakında eklenecek');
-      }}
-    >
-      <IconSymbol name="file-document-outline" size={20} color="#fff" />
-      <ThemedText style={styles.createDocText}>Belge Oluştur</ThemedText>
-    </TouchableOpacity>
-  </View>
-);
+interface Product {
+  name: string;
+  quantity: string;
+  size: string;
+  price: string;
+  cost: string;
+  notes: string;
+}
+
+interface StatusFilter {
+  label: string;
+  value: string;
+  color: string;
+  icon: string;
+}
 
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -45,35 +61,33 @@ export default function OrdersScreen() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showProcessModal, setShowProcessModal] = useState(false);
-  const [tempProcess, setTempProcess] = useState<string>('');
+  const [tempProcess, setTempProcess] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
-  // Sipariş durumu seçenekleri
-  const processOptions = [
-    { 
-      label: 'Sipariş Oluşturuldu', 
-      value: 'Sipariş Oluşturuldu',
-      icon: 'clipboard-plus-outline',
-      color: '#2196F3' // Mavi
-    },
-    { 
-      label: 'Transfer Aşamasında', 
-      value: 'Transfer Aşamasında',
-      icon: 'truck-delivery',
-      color: '#FF9800' // Turuncu
-    },
-    { 
-      label: 'Teslim Edildi', 
-      value: 'Teslim Edildi',
-      icon: 'check-circle',
-      color: '#4CAF50' // Yeşil
-    },
-    { 
-      label: 'İptal Edildi', 
-      value: 'İptal Edildi',
-      icon: 'close-circle',
-      color: '#F44336' // Kırmızı
-    },
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const statusFilters: StatusFilter[] = [
+    { label: 'Tumu', value: 'all', color: COLORS.light.text.secondary, icon: 'format-list-bulleted' },
+    { label: 'Bekleyen', value: 'Sipariş Oluşturuldu', color: COLORS.info.main, icon: 'clock-outline' },
+    { label: 'Transfer', value: 'Transfer Aşamasında', color: COLORS.warning.main, icon: 'truck-fast-outline' },
+    { label: 'Teslim', value: 'Teslim Edildi', color: COLORS.success.main, icon: 'check-circle-outline' },
+    { label: 'Iptal', value: 'İptal Edildi', color: COLORS.error.main, icon: 'close-circle-outline' },
   ];
+
+  useEffect(() => {
+    fetchOrders();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  useEffect(() => {
+    filterOrders();
+  }, [searchQuery, orders, activeFilter]);
 
   const fetchOrders = async () => {
     try {
@@ -82,118 +96,200 @@ export default function OrdersScreen() {
       setOrders(data);
       setFilteredOrders(data);
     } catch (error) {
-      console.error('Siparişler yüklenirken hata:', error);
+      console.error('Siparisler yuklenirken hata:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  const filterOrders = () => {
+    let filtered = orders;
 
-  const handleSearch = (text: string) => {
-    setSearchQuery(text);
-    const filtered = orders.filter(order => 
-      order.order_no.toLowerCase().includes(text.toLowerCase())
-    );
+    if (activeFilter !== 'all') {
+      filtered = filtered.filter(order => order.process === activeFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(order =>
+        order.order_no.toLowerCase().includes(query) ||
+        order.customer_name.toLowerCase().includes(query) ||
+        order.customer_country.toLowerCase().includes(query) ||
+        order.customer_city.toLowerCase().includes(query)
+      );
+    }
+
     setFilteredOrders(filtered);
   };
 
-  const handleRefresh = () => {
+  const onRefresh = () => {
     setRefreshing(true);
     fetchOrders();
   };
 
-  const calculateTotalAmount = (products: string) => {
-    try {
-      const parsedProducts = JSON.parse(products);
-      return parsedProducts.reduce((total: number, product: any) => {
-        const price = parseFloat(product.price) || 0;
-        const quantity = parseInt(product.quantity) || 0;
-        if (isNaN(price) || isNaN(quantity)) {
-          console.log('Hatalı ürün verisi:', product);
-        }
-        return total + (price * quantity);
-      }, 0);
-    } catch (error) {
-      console.error('JSON parse hatası:', error);
-      return 0;
+  const getStatusConfig = (process: string) => {
+    switch (process) {
+      case 'Sipariş Oluşturuldu':
+        return { color: COLORS.info.main, bg: COLORS.info.bg, icon: 'clipboard-plus-outline', label: 'Bekleyen' };
+      case 'Transfer Aşamasında':
+        return { color: COLORS.warning.main, bg: COLORS.warning.bg, icon: 'truck-fast-outline', label: 'Transferde' };
+      case 'Teslim Edildi':
+        return { color: COLORS.success.main, bg: COLORS.success.bg, icon: 'check-circle', label: 'Teslim Edildi' };
+      case 'İptal Edildi':
+        return { color: COLORS.error.main, bg: COLORS.error.bg, icon: 'close-circle', label: 'Iptal' };
+      default:
+        return { color: COLORS.light.text.tertiary, bg: COLORS.light.surfaceVariant, icon: 'help-circle', label: 'Bilinmiyor' };
     }
   };
 
-  const handleShowDetails = (order: Order) => {
-    setSelectedOrder(order);
-    setShowModal(true);
-  };
-
-  // Sipariş durumu güncelleme fonksiyonu
-  const handleUpdateProcess = async (orderId: number, newProcess: string) => {
+  const handleProcessUpdate = async (orderId: number, newProcess: string) => {
     try {
-      console.log('Güncelleme isteği gönderiliyor:', { orderId, newProcess });
-
       const response = await fetch(`http://192.168.0.13:3000/api/orders/${orderId}/process`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ process: newProcess }),
       });
 
-      const responseData = await response.json();
-      console.log('Sunucu yanıtı:', responseData);
-
-      if (!response.ok) {
-        throw new Error(responseData.error || 'Sipariş durumu güncellenemedi');
+      if (response.ok) {
+        fetchOrders();
+        setShowProcessModal(false);
+        setShowModal(false);
       }
-
-      // Başarılı güncelleme sonrası siparişleri yenile
-      await fetchOrders();
-      setShowProcessModal(false);
-      setTempProcess(''); // Geçici durumu sıfırla
-      
-      // Başarılı mesajı göster
-      Alert.alert('Başarılı', 'Sipariş durumu başarıyla güncellendi');
-    } catch (error: any) {
-      console.error('Sipariş durumu güncelleme hatası:', error);
-      Alert.alert(
-        'Hata',
-        'Sipariş durumu güncellenirken bir hata oluştu. Lütfen tekrar deneyin.\n\nHata detayı: ' + error.message
-      );
+    } catch (error) {
+      console.error('Durum guncellenirken hata:', error);
     }
   };
 
-  // Modal açıldığında geçici durumu ayarla
-  const handleOpenProcessModal = (order: Order) => {
-    setSelectedOrder(order);
-    setTempProcess(order.process);
-    setShowProcessModal(true);
+  const calculateOrderTotal = (products: Product[]) => {
+    return products.reduce((sum, product) => {
+      return sum + (parseFloat(product.price) * parseInt(product.quantity || '0'));
+    }, 0);
   };
 
-  // Modal kapatıldığında geçici durumu sıfırla
-  const handleCloseProcessModal = () => {
-    setShowProcessModal(false);
-    setTempProcess('');
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
   };
 
-  // Duruma göre renk belirleme
-  const getProcessColor = (process: string) => {
-    const option = processOptions.find(opt => opt.value === process);
-    return option ? option.color : '#666';
+  const renderFilterChips = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filterContainer}
+    >
+      {statusFilters.map((filter) => {
+        const isActive = activeFilter === filter.value;
+        return (
+          <TouchableOpacity
+            key={filter.value}
+            style={[
+              styles.filterChip,
+              isActive && { backgroundColor: filter.color }
+            ]}
+            onPress={() => setActiveFilter(filter.value)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              name={filter.icon}
+              size={16}
+              color={isActive ? '#fff' : filter.color}
+            />
+            <ThemedText style={[
+              styles.filterChipText,
+              isActive && { color: '#fff' }
+            ]}>
+              {filter.label}
+            </ThemedText>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+
+  const renderOrderCard = (order: Order, index: number) => {
+    const status = getStatusConfig(order.process);
+    const products: Product[] = JSON.parse(order.products);
+    const total = calculateOrderTotal(products);
+
+    return (
+      <Animated.View
+        key={order.id}
+        style={[
+          styles.orderCard,
+          { opacity: fadeAnim }
+        ]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            setSelectedOrder(order);
+            setShowModal(true);
+          }}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.orderNoContainer}>
+                <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
+                <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+                  <IconSymbol name={status.icon} size={12} color={status.color} />
+                  <ThemedText style={[styles.statusText, { color: status.color }]}>
+                    {status.label}
+                  </ThemedText>
+                </View>
+              </View>
+              <ThemedText style={styles.orderDate}>
+                {formatDate(order.date)}
+              </ThemedText>
+            </View>
+            <View style={styles.cardHeaderRight}>
+              <ThemedText style={styles.totalLabel}>Toplam</ThemedText>
+              <ThemedText style={styles.totalAmount}>${total.toFixed(2)}</ThemedText>
+            </View>
+          </View>
+
+          <View style={styles.cardBody}>
+            <View style={styles.customerInfo}>
+              <View style={styles.customerAvatar}>
+                <ThemedText style={styles.avatarText}>
+                  {order.customer_name.charAt(0).toUpperCase()}
+                </ThemedText>
+              </View>
+              <View style={styles.customerDetails}>
+                <ThemedText style={styles.customerName}>{order.customer_name}</ThemedText>
+                <View style={styles.locationRow}>
+                  <IconSymbol name="map-marker-outline" size={14} color={COLORS.light.text.tertiary} />
+                  <ThemedText style={styles.locationText}>
+                    {order.customer_city}, {order.customer_country}
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.productsPreview}>
+              <View style={styles.productsInfo}>
+                <IconSymbol name="package-variant" size={16} color={COLORS.primary.main} />
+                <ThemedText style={styles.productsCount}>
+                  {products.length} urun
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron-right" size={20} color={COLORS.light.text.tertiary} />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
   };
 
-  // Duruma göre ikon belirleme
-  const getProcessIcon = (process: string) => {
-    const option = processOptions.find(opt => opt.value === process);
-    return option ? option.icon : 'help-circle';
-  };
-
-  const renderOrderDetails = () => {
+  const renderDetailModal = () => {
     if (!selectedOrder) return null;
 
-    const parsedProducts = JSON.parse(selectedOrder.products);
-    const totalAmount = calculateTotalAmount(selectedOrder.products);
+    const status = getStatusConfig(selectedOrder.process);
+    const products: Product[] = JSON.parse(selectedOrder.products);
+    const total = calculateOrderTotal(products);
 
     return (
       <Modal
@@ -204,102 +300,152 @@ export default function OrdersScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Sipariş Detayları</ThemedText>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
-                <IconSymbol name="close" size={24} color="#666" />
+              <View>
+                <ThemedText style={styles.modalOrderNo}>#{selectedOrder.order_no}</ThemedText>
+                <ThemedText style={styles.modalDate}>{formatDate(selectedOrder.date)}</ThemedText>
+              </View>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowModal(false)}
+              >
+                <IconSymbol name="close" size={24} color={COLORS.light.text.secondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody}>
-              <View style={styles.detailSection}>
-                <ThemedText style={styles.sectionTitle}>Sipariş Bilgileri</ThemedText>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Sipariş No:</ThemedText>
-                  <ThemedText style={styles.detailValue}>#{selectedOrder.order_no}</ThemedText>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[styles.statusCard, { backgroundColor: status.bg }]}
+                onPress={() => {
+                  setTempProcess(selectedOrder.process);
+                  setShowProcessModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.statusCardContent}>
+                  <IconSymbol name={status.icon} size={24} color={status.color} />
+                  <View style={styles.statusCardText}>
+                    <ThemedText style={[styles.statusCardTitle, { color: status.color }]}>
+                      {selectedOrder.process}
+                    </ThemedText>
+                    <ThemedText style={styles.statusCardSubtitle}>Durumu degistirmek icin dokun</ThemedText>
+                  </View>
                 </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Tarih:</ThemedText>
-                  <ThemedText style={styles.detailValue}>
-                    {new Date(selectedOrder.date).toLocaleDateString('tr-TR')}
-                  </ThemedText>
-                </View>
-              </View>
+                <IconSymbol name="chevron-right" size={20} color={status.color} />
+              </TouchableOpacity>
 
-              <View style={styles.detailSection}>
-                <ThemedText style={styles.sectionTitle}>Müşteri Bilgileri</ThemedText>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Ad Soyad:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.customer_name}</ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Adres:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.customer_address}</ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Konum:</ThemedText>
-                  <ThemedText style={styles.detailValue}>
-                    {selectedOrder.customer_city}, {selectedOrder.customer_country}
-                  </ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Telefon:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.customer_phone}</ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>E-posta:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.customer_email}</ThemedText>
-                </View>
-              </View>
-
-              <View style={styles.detailSection}>
-                <ThemedText style={styles.sectionTitle}>Sevkiyat Bilgileri</ThemedText>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Satış Temsilcisi:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.salesman}</ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Konferans:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.conference}</ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Acenta:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.agency}</ThemedText>
-                </View>
-                <View style={styles.detailRow}>
-                  <ThemedText style={styles.detailLabel}>Rehber:</ThemedText>
-                  <ThemedText style={styles.detailValue}>{selectedOrder.guide}</ThemedText>
-                </View>
-              </View>
-
-              <View style={styles.detailSection}>
-                <ThemedText style={styles.sectionTitle}>Ürünler</ThemedText>
-                {parsedProducts.map((product: any, index: number) => (
-                  <View key={index} style={styles.productItem}>
-                    <View style={styles.productHeader}>
-                      <ThemedText style={styles.productName}>{product.name}</ThemedText>
-                      <ThemedText style={styles.productPrice}>
-                        ${(parseFloat(product.price) || 0).toFixed(2)}
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>Musteri Bilgileri</ThemedText>
+                <View style={styles.infoCard}>
+                  <View style={styles.infoRow}>
+                    <IconSymbol name="account" size={20} color={COLORS.primary.main} />
+                    <View style={styles.infoContent}>
+                      <ThemedText style={styles.infoLabel}>Ad Soyad</ThemedText>
+                      <ThemedText style={styles.infoValue}>{selectedOrder.customer_name}</ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.infoDivider} />
+                  <View style={styles.infoRow}>
+                    <IconSymbol name="map-marker" size={20} color={COLORS.primary.main} />
+                    <View style={styles.infoContent}>
+                      <ThemedText style={styles.infoLabel}>Konum</ThemedText>
+                      <ThemedText style={styles.infoValue}>
+                        {selectedOrder.customer_city}, {selectedOrder.customer_country}
                       </ThemedText>
                     </View>
-                    <View style={styles.productDetails}>
-                      <ThemedText style={styles.productInfo}>
-                        {product.quantity} adet • {product.size}
-                      </ThemedText>
-                      <ThemedText style={styles.productTotal}>
-                        ${((parseFloat(product.price) || 0) * (parseInt(product.quantity) || 0)).toFixed(2)}
-                      </ThemedText>
-                    </View>
-                    {product.notes && (
-                      <ThemedText style={styles.productNotes}>{product.notes}</ThemedText>
+                  </View>
+                  {selectedOrder.customer_phone && (
+                    <>
+                      <View style={styles.infoDivider} />
+                      <View style={styles.infoRow}>
+                        <IconSymbol name="phone" size={20} color={COLORS.primary.main} />
+                        <View style={styles.infoContent}>
+                          <ThemedText style={styles.infoLabel}>Telefon</ThemedText>
+                          <ThemedText style={styles.infoValue}>{selectedOrder.customer_phone}</ThemedText>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                  {selectedOrder.customer_email && (
+                    <>
+                      <View style={styles.infoDivider} />
+                      <View style={styles.infoRow}>
+                        <IconSymbol name="email" size={20} color={COLORS.primary.main} />
+                        <View style={styles.infoContent}>
+                          <ThemedText style={styles.infoLabel}>E-posta</ThemedText>
+                          <ThemedText style={styles.infoValue}>{selectedOrder.customer_email}</ThemedText>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+
+              {(selectedOrder.salesman || selectedOrder.conference) && (
+                <View style={styles.section}>
+                  <ThemedText style={styles.sectionTitle}>Satis Bilgileri</ThemedText>
+                  <View style={styles.infoCard}>
+                    {selectedOrder.salesman && (
+                      <View style={styles.infoRow}>
+                        <IconSymbol name="account-tie" size={20} color={COLORS.secondary.main} />
+                        <View style={styles.infoContent}>
+                          <ThemedText style={styles.infoLabel}>Satis Temsilcisi</ThemedText>
+                          <ThemedText style={styles.infoValue}>{selectedOrder.salesman}</ThemedText>
+                        </View>
+                      </View>
+                    )}
+                    {selectedOrder.conference && (
+                      <>
+                        <View style={styles.infoDivider} />
+                        <View style={styles.infoRow}>
+                          <IconSymbol name="presentation" size={20} color={COLORS.secondary.main} />
+                          <View style={styles.infoContent}>
+                            <ThemedText style={styles.infoLabel}>Konferans</ThemedText>
+                            <ThemedText style={styles.infoValue}>{selectedOrder.conference}</ThemedText>
+                          </View>
+                        </View>
+                      </>
                     )}
                   </View>
-                ))}
-                <View style={styles.totalRow}>
-                  <ThemedText style={styles.totalLabel}>Toplam Tutar</ThemedText>
-                  <ThemedText style={styles.totalAmount}>${totalAmount.toFixed(2)}</ThemedText>
+                </View>
+              )}
+
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>Urunler ({products.length})</ThemedText>
+                <View style={styles.productsCard}>
+                  {products.map((product, index) => (
+                    <View key={index}>
+                      <View style={styles.productItem}>
+                        <View style={styles.productInfo}>
+                          <ThemedText style={styles.productName}>{product.name}</ThemedText>
+                          {product.size && (
+                            <ThemedText style={styles.productSize}>Boyut: {product.size}</ThemedText>
+                          )}
+                        </View>
+                        <View style={styles.productPricing}>
+                          <ThemedText style={styles.productQuantity}>x{product.quantity}</ThemedText>
+                          <ThemedText style={styles.productPrice}>${product.price}</ThemedText>
+                        </View>
+                      </View>
+                      {index < products.length - 1 && <View style={styles.productDivider} />}
+                    </View>
+                  ))}
+
+                  <LinearGradient
+                    colors={COLORS.gradients.primary}
+                    style={styles.totalCard}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <ThemedText style={styles.totalCardLabel}>Toplam Tutar</ThemedText>
+                    <ThemedText style={styles.totalCardValue}>${total.toFixed(2)}</ThemedText>
+                  </LinearGradient>
                 </View>
               </View>
+
+              <View style={{ height: 40 }} />
             </ScrollView>
           </View>
         </View>
@@ -307,116 +453,68 @@ export default function OrdersScreen() {
     );
   };
 
-  // Sipariş durumu modal bileşeni
   const renderProcessModal = () => {
-    if (!selectedOrder) return null;
+    const processes = [
+      { value: 'Sipariş Oluşturuldu', ...getStatusConfig('Sipariş Oluşturuldu') },
+      { value: 'Transfer Aşamasında', ...getStatusConfig('Transfer Aşamasında') },
+      { value: 'Teslim Edildi', ...getStatusConfig('Teslim Edildi') },
+      { value: 'İptal Edildi', ...getStatusConfig('İptal Edildi') },
+    ];
 
     return (
       <Modal
         visible={showProcessModal}
+        animationType="fade"
         transparent={true}
-        animationType="slide"
-        onRequestClose={handleCloseProcessModal}
+        onRequestClose={() => setShowProcessModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { padding: 0, borderRadius: 16 }]}>
-            <View style={[styles.modalHeader, { 
-              backgroundColor: '#f8f8f8', 
-              borderBottomWidth: 0,
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              paddingVertical: 16
-            }]}>
-              <ThemedText style={[styles.modalTitle, { fontSize: 18 }]}>Sipariş Durumu</ThemedText>
-              <TouchableOpacity 
-                onPress={handleCloseProcessModal}
-                style={styles.closeButton}
-              >
-                <IconSymbol name="close-circle" size={24} color="#ff4444" />
-              </TouchableOpacity>
-            </View>
+        <View style={styles.processModalOverlay}>
+          <View style={styles.processModalContent}>
+            <ThemedText style={styles.processModalTitle}>Siparis Durumu</ThemedText>
 
-            <ScrollView style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 }}>
-              {processOptions.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.processOption,
-                    tempProcess === option.value && styles.processOptionSelected,
-                    { 
-                      borderLeftWidth: 3,
-                      borderLeftColor: option.color,
-                      marginBottom: 8,
-                      elevation: 1,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.1,
-                      shadowRadius: 2,
-                    }
-                  ]}
-                  onPress={() => setTempProcess(option.value)}
-                >
-                  <View style={styles.processOptionContent}>
-                    <View style={[
-                      styles.processOptionIcon,
-                      { 
-                        backgroundColor: option.color + '15',
-                        padding: 6,
-                        borderRadius: 6
-                      }
-                    ]}>
-                      <IconSymbol name={option.icon} size={20} color={option.color} />
-                    </View>
-                    <ThemedText style={[
-                      styles.processOptionText,
-                      tempProcess === option.value && styles.processOptionTextSelected
-                    ]}>
-                      {option.label}
-                    </ThemedText>
-                    {tempProcess === option.value && (
-                      <IconSymbol 
-                        name="check-circle" 
-                        size={20} 
-                        color={option.color} 
-                        style={{ marginLeft: 'auto' }}
-                      />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={[styles.modalFooter, { 
-              justifyContent: 'center',
-              borderBottomLeftRadius: 16,
-              borderBottomRightRadius: 16,
-              paddingVertical: 16
-            }]}>
+            {processes.map((process) => (
               <TouchableOpacity
-                style={[styles.cancelButton, { minWidth: 100 }]}
-                onPress={handleCloseProcessModal}
-              >
-                <ThemedText style={styles.cancelButtonText}>İptal</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
+                key={process.value}
                 style={[
-                  styles.saveButton,
-                  (!tempProcess || tempProcess === selectedOrder.process) && styles.saveButtonDisabled,
-                  { minWidth: 100 }
+                  styles.processOption,
+                  tempProcess === process.value && { backgroundColor: process.bg }
                 ]}
-                onPress={() => {
-                  if (tempProcess && tempProcess !== selectedOrder.process) {
-                    handleUpdateProcess(selectedOrder.id, tempProcess);
-                  }
-                }}
-                disabled={!tempProcess || tempProcess === selectedOrder.process}
+                onPress={() => setTempProcess(process.value)}
               >
+                <IconSymbol
+                  name={process.icon}
+                  size={24}
+                  color={tempProcess === process.value ? process.color : COLORS.light.text.tertiary}
+                />
                 <ThemedText style={[
-                  styles.saveButtonText,
-                  (!tempProcess || tempProcess === selectedOrder.process) && styles.saveButtonTextDisabled
+                  styles.processOptionText,
+                  tempProcess === process.value && { color: process.color, fontWeight: '600' }
                 ]}>
-                  Kaydet
+                  {process.value}
                 </ThemedText>
+                {tempProcess === process.value && (
+                  <IconSymbol name="check" size={20} color={process.color} />
+                )}
+              </TouchableOpacity>
+            ))}
+
+            <View style={styles.processModalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowProcessModal(false)}
+              >
+                <ThemedText style={styles.cancelButtonText}>Iptal</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={() => selectedOrder && handleProcessUpdate(selectedOrder.id, tempProcess)}
+              >
+                <LinearGradient
+                  colors={COLORS.gradients.primary}
+                  style={styles.saveButtonGradient}
+                >
+                  <ThemedText style={styles.saveButtonText}>Kaydet</ThemedText>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
@@ -425,121 +523,81 @@ export default function OrdersScreen() {
     );
   };
 
-  const renderOrderCard = (order: Order) => {
-    const totalAmount = calculateTotalAmount(order.products);
-    const parsedProducts = JSON.parse(order.products);
-    const itemCount = parsedProducts.length;
-    const processColor = getProcessColor(order.process);
-    const processIcon = getProcessIcon(order.process);
-
+  if (loading) {
     return (
-      <View key={order.id} style={styles.orderCard}>
-        <View style={styles.orderHeader}>
-          <View style={styles.orderInfo}>
-            <View style={styles.orderNoContainer}>
-              <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
-              <ThemedText style={styles.orderDate}>
-                <IconSymbol name="calendar" size={14} color="#666" style={styles.dateIcon} />
-                {new Date(order.date).toLocaleDateString('tr-TR')}
-              </ThemedText>
-            </View>
-          </View>
-          <TouchableOpacity
-            style={[styles.processStatus, { backgroundColor: processColor + '15' }]}
-            onPress={() => handleOpenProcessModal(order)}
-          >
-            <IconSymbol
-              name={processIcon}
-              size={16}
-              color={processColor}
-            />
-            <ThemedText style={[styles.processText, { color: processColor }]}>
-              {order.process}
-            </ThemedText>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.customerInfo}>
-          <View style={styles.infoRow}>
-            <View style={styles.iconContainer}>
-              <IconSymbol name="account" size={16} color="#00b51a" />
-            </View>
-            <ThemedText style={styles.customerName}>{order.customer_name}</ThemedText>
-          </View>
-          <View style={styles.infoRow}>
-            <View style={styles.iconContainer}>
-              <IconSymbol name="map-marker" size={16} color="#00b51a" />
-            </View>
-            <ThemedText style={styles.location}>{order.customer_city}, {order.customer_country}</ThemedText>
-          </View>
-        </View>
-
-        <View style={styles.orderFooter}>
-          <View style={styles.orderStats}>
-            <View style={styles.statsItem}>
-              <IconSymbol name="package-variant" size={16} color="#00b51a" />
-              <ThemedText style={styles.itemCount}>{itemCount} Ürün</ThemedText>
-            </View>
-            <View style={styles.statsItem}>
-              <IconSymbol name="cash" size={16} color="#00b51a" />
-              <ThemedText style={styles.totalAmount}>${totalAmount.toFixed(2)}</ThemedText>
-            </View>
-          </View>
-          <TouchableOpacity 
-            style={styles.detailsButton} 
-            onPress={() => handleShowDetails(order)}
-          >
-            <ThemedText style={styles.detailsButtonText}>Detaylar</ThemedText>
-            <IconSymbol name="chevron-right" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary.main} />
+        <ThemedText style={styles.loadingText}>Siparisler yukleniyor...</ThemedText>
       </View>
     );
-  };
+  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <IconSymbol name="magnify" size={24} color="#666" />
+      <View style={styles.searchSection}>
+        <View style={[
+          styles.searchBar,
+          isSearchFocused && styles.searchBarFocused
+        ]}>
+          <IconSymbol
+            name="magnify"
+            size={22}
+            color={isSearchFocused ? COLORS.primary.main : COLORS.light.text.tertiary}
+          />
           <TextInput
             style={styles.searchInput}
-            placeholder="Sipariş numarası ile ara..."
+            placeholder="Siparis ara..."
+            placeholderTextColor={COLORS.light.text.tertiary}
             value={searchQuery}
-            onChangeText={handleSearch}
+            onChangeText={setSearchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
           />
-          {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => handleSearch('')}>
-              <IconSymbol name="close" size={20} color="#666" />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <IconSymbol name="close-circle" size={20} color={COLORS.light.text.tertiary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#00b51a" />
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.ordersList}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              colors={['#00b51a']}
-            />
-          }
-        >
-          {filteredOrders.map(renderOrderCard)}
-        </ScrollView>
-      )}
+      {renderFilterChips()}
 
+      <View style={styles.resultsHeader}>
+        <ThemedText style={styles.resultsCount}>
+          {filteredOrders.length} siparis bulundu
+        </ThemedText>
+      </View>
+
+      <ScrollView
+        style={styles.ordersList}
+        contentContainerStyle={styles.ordersListContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[COLORS.primary.main]}
+            tintColor={COLORS.primary.main}
+          />
+        }
+      >
+        {filteredOrders.length > 0 ? (
+          filteredOrders.map((order, index) => renderOrderCard(order, index))
+        ) : (
+          <View style={styles.emptyState}>
+            <IconSymbol name="package-variant-closed" size={64} color={COLORS.light.border} />
+            <ThemedText style={styles.emptyStateTitle}>Siparis Bulunamadi</ThemedText>
+            <ThemedText style={styles.emptyStateText}>
+              Arama kriterlerinize uygun siparis yok
+            </ThemedText>
+          </View>
+        )}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {renderDetailModal()}
       {renderProcessModal()}
-      {renderOrderDetails()}
     </View>
   );
 }
@@ -547,355 +605,434 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  searchContainer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 44,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#333',
+    backgroundColor: COLORS.light.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.light.background,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: TYPOGRAPHY.fontSize.md,
+    color: COLORS.light.text.secondary,
+  },
+  searchSection: {
+    paddingHorizontal: SPACING.base,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderWidth: 2,
+    borderColor: COLORS.light.border,
+    ...SHADOWS.sm,
+  },
+  searchBarFocused: {
+    borderColor: COLORS.primary.main,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: SPACING.sm,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+  },
+  filterContainer: {
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.light.surface,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+    marginRight: SPACING.sm,
+    gap: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  filterChipText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.secondary,
+  },
+  resultsHeader: {
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.sm,
+  },
+  resultsCount: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
   },
   ordersList: {
     flex: 1,
-    padding: 16,
+  },
+  ordersListContent: {
+    paddingHorizontal: SPACING.base,
   },
   orderCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.md,
+    ...SHADOWS.md,
   },
-  orderHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    padding: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.borderLight,
   },
-  orderInfo: {
-    flex: 1,
+  cardHeaderLeft: {},
+  cardHeaderRight: {
+    alignItems: 'flex-end',
   },
   orderNoContainer: {
-    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
   orderNo: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.full,
+    gap: 4,
+  },
+  statusText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
   orderDate: {
-    fontSize: 13,
-    color: '#666',
-    flexDirection: 'row',
-    alignItems: 'center',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
   },
-  dateIcon: {
-    marginRight: 4,
+  totalLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginBottom: 2,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginVertical: 12,
+  totalAmount: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary.main,
+  },
+  cardBody: {
+    padding: SPACING.base,
   },
   customerInfo: {
-    marginBottom: 16,
-  },
-  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: SPACING.md,
   },
-  iconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#f5f5f5',
+  customerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary.main,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
+    marginRight: SPACING.md,
   },
+  avatarText: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
+  },
+  customerDetails: {},
   customerName: {
-    fontSize: 15,
-    color: '#333',
-    fontWeight: '500',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginBottom: 2,
   },
-  location: {
-    fontSize: 14,
-    color: '#666',
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  orderFooter: {
+  locationText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  productsPreview: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    backgroundColor: COLORS.light.surfaceVariant,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
   },
-  orderStats: {
-    flexDirection: 'column',
-    gap: 8,
-  },
-  statsItem: {
+  productsInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING.sm,
   },
-  itemCount: {
-    fontSize: 14,
-    color: '#666',
+  productsCount: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.secondary,
   },
-  totalAmount: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#00b51a',
-  },
-  detailsButton: {
-    flexDirection: 'row',
+  emptyState: {
+    flex: 1,
     alignItems: 'center',
-    backgroundColor: '#00b51a',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    elevation: 2,
-    shadowColor: '#00b51a',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    justifyContent: 'center',
+    paddingVertical: SPACING['5xl'],
   },
-  detailsButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-    marginRight: 4,
+  emptyStateTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  emptyStateText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    padding: 16,
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    maxHeight: '70%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    margin: 16,
+    backgroundColor: COLORS.light.surface,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    maxHeight: '90%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.light.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.border,
+  },
+  modalOrderNo: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+  },
+  modalDate: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
   },
   closeButton: {
-    padding: 4,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.light.surfaceVariant,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
-    padding: 16,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
   },
-  detailSection: {
-    marginBottom: 24,
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: SPACING.base,
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.lg,
+  },
+  statusCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  statusCardText: {},
+  statusCardTitle: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+  },
+  statusCardSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
+  },
+  section: {
+    marginBottom: SPACING.lg,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.md,
   },
-  detailRow: {
+  infoCard: {
+    backgroundColor: COLORS.light.surfaceVariant,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+  },
+  infoRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: SPACING.md,
   },
-  detailLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: '#666',
+  infoContent: {},
+  infoLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginBottom: 2,
   },
-  detailValue: {
-    flex: 2,
-    fontSize: 14,
-    color: '#333',
+  infoValue: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: COLORS.light.border,
+    marginVertical: SPACING.md,
+  },
+  productsCard: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+    overflow: 'hidden',
   },
   productItem: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    padding: SPACING.base,
   },
+  productInfo: {},
   productName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.primary,
+    marginBottom: 2,
+  },
+  productSize: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  productPricing: {
+    alignItems: 'flex-end',
+  },
+  productQuantity: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginBottom: 2,
   },
   productPrice: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.primary.main,
   },
-  productDetails: {
+  productDivider: {
+    height: 1,
+    backgroundColor: COLORS.light.borderLight,
+  },
+  totalCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    padding: SPACING.base,
   },
-  productInfo: {
-    fontSize: 14,
-    color: '#666',
+  totalCardLabel: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: 'rgba(255,255,255,0.8)',
   },
-  productTotal: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#00b51a',
+  totalCardValue: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
   },
-  productNotes: {
-    fontSize: 13,
-    color: '#666',
-    fontStyle: 'italic',
-    marginTop: 4,
+  processModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
   },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+  processModalContent: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING.lg,
   },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  processStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 6,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-    marginLeft: 8,
-  },
-  processText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '600',
+  processModalTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.lg,
+    textAlign: 'center',
   },
   processOption: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  processOptionSelected: {
-    backgroundColor: '#fff',
-    borderColor: '#ddd',
-  },
-  processOptionContent: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  processOptionIcon: {
-    marginRight: 12,
+    padding: SPACING.base,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.sm,
+    gap: SPACING.md,
   },
   processOptionText: {
-    fontSize: 14,
-    color: '#333',
     flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.secondary,
   },
-  processOptionTextSelected: {
-    fontWeight: '600',
-  },
-  modalFooter: {
+  processModalActions: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    gap: 12,
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
   },
   cancelButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    backgroundColor: '#f5f5f5',
+    flex: 1,
+    paddingVertical: SPACING.md,
     alignItems: 'center',
+    backgroundColor: COLORS.light.surfaceVariant,
+    borderRadius: RADIUS.lg,
   },
   cancelButtonText: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.secondary,
   },
   saveButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    backgroundColor: '#00b51a',
-    alignItems: 'center',
+    flex: 1,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
   },
-  saveButtonDisabled: {
-    backgroundColor: '#e0e0e0',
+  saveButtonGradient: {
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
   },
   saveButtonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFFFFF',
   },
-  saveButtonTextDisabled: {
-    color: '#999',
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  createDocButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#00b51a',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  createDocText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-}); 
+});
