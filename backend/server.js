@@ -44,7 +44,42 @@ db.exec(`
     agency TEXT,
     guide TEXT,
     products TEXT,
-    process TEXT DEFAULT 'Sipariş Oluşturuldu'
+    process TEXT DEFAULT 'Sipariş Oluşturuldu',
+    photos TEXT,
+    cargo_company TEXT,
+    cargo_tracking TEXT
+  )
+`);
+
+// Musteriler tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS musteriler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    country TEXT,
+    city TEXT,
+    address TEXT,
+    notes TEXT,
+    total_orders INTEGER DEFAULT 0,
+    total_spent REAL DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Urunler tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS urunler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    category TEXT,
+    default_price REAL,
+    default_cost REAL,
+    sizes TEXT,
+    description TEXT,
+    in_stock INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
@@ -388,6 +423,170 @@ app.put('/api/users/:id/permissions', (req, res) => {
   } catch (error) {
     console.error('Ek yetki guncelleme hatasi:', error);
     res.status(500).json({ error: 'Ek yetkiler guncellenemedi' });
+  }
+});
+
+// ==================== MUSTERI API ENDPOINTS ====================
+
+// Tum musterileri getir
+app.get('/api/customers', (req, res) => {
+  try {
+    const customers = db.prepare('SELECT * FROM musteriler ORDER BY name ASC').all();
+    res.json(customers);
+  } catch (error) {
+    console.error('Musteri listesi hatasi:', error);
+    res.status(500).json({ error: 'Musteriler getirilemedi' });
+  }
+});
+
+// Musteri ara
+app.get('/api/customers/search', (req, res) => {
+  const { q } = req.query;
+  try {
+    const customers = db.prepare(`
+      SELECT * FROM musteriler
+      WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
+      ORDER BY name ASC
+    `).all(`%${q}%`, `%${q}%`, `%${q}%`);
+    res.json(customers);
+  } catch (error) {
+    console.error('Musteri arama hatasi:', error);
+    res.status(500).json({ error: 'Arama basarisiz' });
+  }
+});
+
+// Yeni musteri ekle
+app.post('/api/customers', (req, res) => {
+  const { name, email, phone, country, city, address, notes } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO musteriler (name, email, phone, country, city, address, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(name, email, phone, country, city, address, notes);
+
+    res.status(201).json({
+      message: 'Musteri basariyla eklendi',
+      customerId: result.lastInsertRowid
+    });
+  } catch (error) {
+    console.error('Musteri ekleme hatasi:', error);
+    res.status(500).json({ error: 'Musteri eklenemedi' });
+  }
+});
+
+// Musteri guncelle
+app.put('/api/customers/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone, country, city, address, notes } = req.body;
+
+  try {
+    const result = db.prepare(`
+      UPDATE musteriler SET name=?, email=?, phone=?, country=?, city=?, address=?, notes=?
+      WHERE id=?
+    `).run(name, email, phone, country, city, address, notes, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Musteri bulunamadi' });
+    }
+
+    res.json({ message: 'Musteri guncellendi', customerId: id });
+  } catch (error) {
+    console.error('Musteri guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Musteri guncellenemedi' });
+  }
+});
+
+// Musteri sil
+app.delete('/api/customers/:id', (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = db.prepare('DELETE FROM musteriler WHERE id = ?').run(id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Musteri bulunamadi' });
+    }
+
+    res.json({ message: 'Musteri silindi' });
+  } catch (error) {
+    console.error('Musteri silme hatasi:', error);
+    res.status(500).json({ error: 'Musteri silinemedi' });
+  }
+});
+
+// ==================== URUN API ENDPOINTS ====================
+
+// Tum urunleri getir
+app.get('/api/products', (req, res) => {
+  try {
+    const products = db.prepare('SELECT * FROM urunler ORDER BY name ASC').all();
+    res.json(products);
+  } catch (error) {
+    console.error('Urun listesi hatasi:', error);
+    res.status(500).json({ error: 'Urunler getirilemedi' });
+  }
+});
+
+// Yeni urun ekle
+app.post('/api/products', (req, res) => {
+  const { name, category, default_price, default_cost, sizes, description, in_stock } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO urunler (name, category, default_price, default_cost, sizes, description, in_stock)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(name, category, default_price, default_cost, sizes, description, in_stock ? 1 : 0);
+
+    res.status(201).json({
+      message: 'Urun basariyla eklendi',
+      productId: result.lastInsertRowid
+    });
+  } catch (error) {
+    console.error('Urun ekleme hatasi:', error);
+    res.status(500).json({ error: 'Urun eklenemedi' });
+  }
+});
+
+// Urun guncelle
+app.put('/api/products/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, category, default_price, default_cost, sizes, description, in_stock } = req.body;
+
+  try {
+    const result = db.prepare(`
+      UPDATE urunler SET name=?, category=?, default_price=?, default_cost=?, sizes=?, description=?, in_stock=?
+      WHERE id=?
+    `).run(name, category, default_price, default_cost, sizes, description, in_stock ? 1 : 0, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Urun bulunamadi' });
+    }
+
+    res.json({ message: 'Urun guncellendi', productId: id });
+  } catch (error) {
+    console.error('Urun guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Urun guncellenemedi' });
+  }
+});
+
+// Urun sil
+app.delete('/api/products/:id', (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = db.prepare('DELETE FROM urunler WHERE id = ?').run(id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Urun bulunamadi' });
+    }
+
+    res.json({ message: 'Urun silindi' });
+  } catch (error) {
+    console.error('Urun silme hatasi:', error);
+    res.status(500).json({ error: 'Urun silinemedi' });
   }
 });
 

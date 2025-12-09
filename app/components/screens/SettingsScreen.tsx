@@ -16,6 +16,8 @@ import HelpCenterScreen from './settings/HelpCenterScreen';
 import AboutScreen from './settings/AboutScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PersonnelListScreen from './settings/PersonnelListScreen';
+import CustomersScreen from './CustomersScreen';
+import ProductsScreen from './ProductsScreen';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
 
@@ -44,7 +46,7 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [currentModal, setCurrentModal] = useState<'profile' | 'security' | 'help' | 'about' | 'personnel' | null>(null);
+  const [currentModal, setCurrentModal] = useState<'profile' | 'security' | 'help' | 'about' | 'personnel' | 'customers' | 'products' | null>(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -189,8 +191,34 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
     },
   ];
 
+  // Data Management section - available to users who can create orders
+  const dataManagementSection: SettingSection = {
+    title: 'Veri Yonetimi',
+    icon: 'database',
+    items: [
+      {
+        icon: 'account-group-outline',
+        label: 'Musteriler',
+        description: 'Musteri veritabani',
+        type: 'link',
+        onPress: () => setCurrentModal('customers'),
+        color: COLORS.info.main,
+      },
+      {
+        icon: 'package-variant',
+        label: 'Urun Katalogu',
+        description: 'Urunleri yonet',
+        type: 'link',
+        onPress: () => setCurrentModal('products'),
+        color: COLORS.success.main,
+      },
+    ],
+  };
+
+  const canManageData = userRole === 'Patron' || userRole === 'Operasyon Sorumlusu';
+
   const settingSections: SettingSection[] = userRole === 'Patron'
-    ? [...baseSettingSections, {
+    ? [...baseSettingSections, dataManagementSection, {
         title: 'Personel Yonetim',
         icon: 'account-group',
         items: [
@@ -204,7 +232,9 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
           },
         ],
       }]
-    : baseSettingSections;
+    : canManageData
+      ? [...baseSettingSections, dataManagementSection]
+      : baseSettingSections;
 
   const renderSettingItem = (item: SettingItem, index: number, isLast: boolean) => (
     <TouchableOpacity
@@ -338,6 +368,22 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
         presentationStyle="fullScreen"
       >
         <PersonnelListScreen onClose={() => setCurrentModal(null)} userRole={userRole} />
+      </Modal>
+
+      <Modal
+        visible={currentModal === 'customers'}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <CustomersScreen onClose={() => setCurrentModal(null)} />
+      </Modal>
+
+      <Modal
+        visible={currentModal === 'products'}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <ProductsScreen onClose={() => setCurrentModal(null)} />
       </Modal>
     </>
   );
