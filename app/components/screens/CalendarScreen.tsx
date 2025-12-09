@@ -1,8 +1,18 @@
-import { View, StyleSheet, TouchableOpacity, Platform, Modal, ScrollView, ActivityIndicator } from 'react-native';
-import React, { useState, useEffect } from 'react';
-import { Calendar, WeekCalendar } from 'react-native-calendars';
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+  ActivityIndicator,
+  Animated,
+} from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { Calendar } from 'react-native-calendars';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
 
 type ViewType = 'month' | 'week' | 'day';
 type DateData = {
@@ -12,16 +22,6 @@ type DateData = {
   year: number;
   timestamp: number;
 };
-
-interface Event {
-  name: string;
-  time: string;
-  type: 'delivery' | 'meeting' | 'inventory';
-}
-
-interface Events {
-  [date: string]: Event[];
-}
 
 interface Order {
   id: number;
@@ -60,464 +60,65 @@ export default function CalendarScreen() {
     pendingOrders: 0
   });
 
-  // Örnek etkinlikler
-  const events: Events = {
-    '2024-02-15': [{ name: 'Halı Teslimatı', time: '10:00', type: 'delivery' }],
-    '2024-02-16': [{ name: 'Müşteri Görüşmesi', time: '14:30', type: 'meeting' }],
-    '2024-02-17': [{ name: 'Stok Kontrolü', time: '09:00', type: 'inventory' }],
-  };
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Siparişleri getir ve işaretle
+  useEffect(() => {
+    fetchOrders();
+    calculateStats();
+
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   const fetchOrders = async () => {
     try {
       const response = await fetch('http://192.168.0.13:3000/api/orders');
       const orders: Order[] = await response.json();
-      
-      // Tarihleri işaretle
+
       const marked: any = {};
       orders.forEach(order => {
         const date = order.date.split('T')[0];
+        const statusColor = getStatusColor(order.process);
         marked[date] = {
           marked: true,
-          dotColor: '#00b51a',
-          selectedColor: '#00b51a',
-          customStyles: {
-            container: {
-              borderWidth: 1,
-              borderColor: '#00b51a',
-            },
-            text: {
-              color: '#333',
-            }
-          }
+          dotColor: statusColor,
+          selectedColor: COLORS.primary.main,
         };
       });
-      
+
       setMarkedDates(marked);
     } catch (error) {
-      console.error('Siparişler yüklenirken hata:', error);
+      console.error('Siparisler yuklenirken hata:', error);
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
-  // Seçilen tarihe ait siparişleri getir
   const fetchOrdersByDate = async (date: string) => {
     setLoading(true);
     try {
       const response = await fetch('http://192.168.0.13:3000/api/orders');
       const orders: Order[] = await response.json();
-      
-      // Seçilen tarihe ait siparişleri filtrele
+
       const dateOrders = orders.filter(order => order.date.split('T')[0] === date);
       setSelectedDateOrders(dateOrders);
     } catch (error) {
-      console.error('Siparişler yüklenirken hata:', error);
+      console.error('Siparisler yuklenirken hata:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDayPress = (day: DateData) => {
-    setSelectedDate(day.dateString);
-    fetchOrdersByDate(day.dateString);
-    setShowOrdersModal(true);
-  };
-
-  // Sipariş durumuna göre renk belirleme
-  const getProcessColor = (process: string) => {
-    switch (process) {
-      case 'Sipariş Oluşturuldu':
-        return '#2196F3';
-      case 'Transfer Aşamasında':
-        return '#FF9800';
-      case 'Teslim Edildi':
-        return '#4CAF50';
-      case 'İptal Edildi':
-        return '#F44336';
-      default:
-        return '#666';
-    }
-  };
-
-  // Sipariş durumuna göre ikon belirleme
-  const getProcessIcon = (process: string) => {
-    switch (process) {
-      case 'Sipariş Oluşturuldu':
-        return 'clipboard-plus-outline';
-      case 'Transfer Aşamasında':
-        return 'truck-delivery';
-      case 'Teslim Edildi':
-        return 'check-circle';
-      case 'İptal Edildi':
-        return 'close-circle';
-      default:
-        return 'help-circle';
-    }
-  };
-
-  const renderViewTypeButton = (type: ViewType, label: string, icon: string) => (
-    <TouchableOpacity
-      style={[styles.viewTypeButton, viewType === type && styles.viewTypeButtonActive]}
-      onPress={() => setViewType(type)}
-    >
-      <IconSymbol name={icon} size={20} color={viewType === type ? '#fff' : '#00b51a'} />
-      <ThemedText style={[styles.viewTypeText, viewType === type && styles.viewTypeTextActive]}>
-        {label}
-      </ThemedText>
-    </TouchableOpacity>
-  );
-
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <ThemedText style={styles.headerTitle}>Takvim</ThemedText>
-      <View style={styles.viewTypeContainer}>
-        {renderViewTypeButton('month', 'Ay', 'calendar-month')}
-        {renderViewTypeButton('week', 'Hafta', 'calendar-week')}
-        {renderViewTypeButton('day', 'Gün', 'calendar-today')}
-      </View>
-    </View>
-  );
-
-  const renderOrdersModal = () => (
-    <Modal
-      visible={showOrdersModal}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setShowOrdersModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <ThemedText style={styles.modalTitle}>
-              {new Date(selectedDate).toLocaleDateString('tr-TR', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              })}
-            </ThemedText>
-            <TouchableOpacity onPress={() => setShowOrdersModal(false)}>
-              <IconSymbol name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
-
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#00b51a" />
-            </View>
-          ) : selectedDateOrders.length > 0 ? (
-            <ScrollView style={styles.modalBody}>
-              {selectedDateOrders.map((order) => (
-                <View key={order.id} style={styles.orderCard}>
-                  <View style={styles.orderHeader}>
-                    <View>
-                      <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
-                      <View style={styles.customerInfo}>
-                        <IconSymbol name="account" size={16} color="#666" />
-                        <ThemedText style={styles.customerName}>{order.customer_name}</ThemedText>
-                      </View>
-                    </View>
-                    <View style={[
-                      styles.processStatus,
-                      { backgroundColor: getProcessColor(order.process) + '15' }
-                    ]}>
-                      <IconSymbol
-                        name={getProcessIcon(order.process)}
-                        size={16}
-                        color={getProcessColor(order.process)}
-                      />
-                      <ThemedText style={[
-                        styles.processText,
-                        { color: getProcessColor(order.process) }
-                      ]}>
-                        {order.process}
-                      </ThemedText>
-                    </View>
-                  </View>
-
-                  <View style={styles.orderDetails}>
-                    <View style={styles.detailRow}>
-                      <IconSymbol name="map-marker" size={16} color="#00b51a" />
-                      <ThemedText style={styles.detailText}>
-                        {order.customer_city}, {order.customer_country}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.detailRow}>
-                      <IconSymbol name="account-tie" size={16} color="#00b51a" />
-                      <ThemedText style={styles.detailText}>{order.salesman}</ThemedText>
-                    </View>
-                    {order.conference && (
-                      <View style={styles.detailRow}>
-                        <IconSymbol name="presentation" size={16} color="#00b51a" />
-                        <ThemedText style={styles.detailText}>{order.conference}</ThemedText>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.productsContainer}>
-                    {JSON.parse(order.products).map((product: Product, index: number) => (
-                      <View key={index} style={styles.productItem}>
-                        <ThemedText style={styles.productName}>{product.name}</ThemedText>
-                        <ThemedText style={styles.productQuantity}>x{product.quantity}</ThemedText>
-                        <ThemedText style={styles.productPrice}>${product.price}</ThemedText>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.noOrdersContainer}>
-              <IconSymbol name="calendar-blank" size={48} color="#ddd" />
-              <ThemedText style={styles.noOrdersText}>
-                Bu tarihte sipariş bulunmuyor
-              </ThemedText>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderCalendarView = () => {
-    const commonTheme = {
-      backgroundColor: '#ffffff',
-      calendarBackground: '#ffffff',
-      textSectionTitleColor: '#333',
-      selectedDayBackgroundColor: '#00b51a',
-      selectedDayTextColor: '#ffffff',
-      todayTextColor: '#00b51a',
-      dayTextColor: '#333',
-      textDisabledColor: '#d9e1e8',
-      dotColor: '#00b51a',
-      selectedDotColor: '#ffffff',
-      arrowColor: '#00b51a',
-      monthTextColor: '#333',
-      textDayFontSize: 16,
-      textMonthFontSize: 20,
-      textDayHeaderFontSize: 14,
-      'stylesheet.calendar.main': {
-        container: {
-          backgroundColor: '#fff',
-          borderRadius: 16,
-          elevation: 4,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          padding: 8,
-        },
-        week: {
-          marginVertical: 2,
-          flexDirection: 'row',
-          justifyContent: 'space-around',
-          paddingHorizontal: 0,
-        },
-        dayContainer: {
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          aspectRatio: 1,
-          margin: 2,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: '#f0f0f0',
-          backgroundColor: '#fff',
-        }
-      },
-      'stylesheet.calendar.header': {
-        header: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          paddingVertical: 16,
-          paddingHorizontal: 16,
-          backgroundColor: '#f8f8f8',
-          borderRadius: 12,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: '#f0f0f0',
-        },
-        monthText: {
-          fontSize: 20,
-          fontWeight: 'bold',
-          color: '#333',
-        },
-        dayHeader: {
-          width: 40,
-          textAlign: 'center',
-          fontSize: 14,
-          fontWeight: '600',
-          color: '#666',
-          marginBottom: 8,
-        },
-        dayTextAtIndex0: { color: '#ff4444' },
-        dayTextAtIndex6: { color: '#ff4444' },
-      }
-    };
-
-    switch (viewType) {
-      case 'month':
-        return (
-          <Calendar
-            current={selectedDate}
-            onDayPress={handleDayPress}
-            markedDates={{
-              ...markedDates,
-              [selectedDate]: {
-                ...(markedDates[selectedDate] || {}),
-                selected: true,
-                selectedColor: '#00b51a'
-              }
-            }}
-            markingType="custom"
-            theme={commonTheme}
-            style={styles.calendar}
-          />
-        );
-      case 'week':
-        return (
-          <WeekCalendar
-            current={selectedDate}
-            onDayPress={handleDayPress}
-            firstDay={1}
-            hideExtraDays={true}
-            enableSwipeMonths={true}
-            markedDates={{
-              ...markedDates,
-              [selectedDate]: {
-                ...(markedDates[selectedDate] || {}),
-                selected: true,
-                selectedColor: '#00b51a'
-              }
-            }}
-            theme={{
-              backgroundColor: '#ffffff',
-              calendarBackground: '#ffffff',
-              textSectionTitleColor: '#333',
-              dayTextColor: '#333',
-              textDisabledColor: '#d9e1e8',
-              dotColor: '#00b51a',
-              selectedDotColor: '#ffffff',
-              arrowColor: '#00b51a',
-              monthTextColor: '#333',
-              textDayFontSize: 16,
-              textMonthFontSize: 20,
-              textDayHeaderFontSize: 14,
-              todayBackgroundColor: '#e6f4ea',
-              todayTextColor: '#00b51a',
-              selectedDayBackgroundColor: '#00b51a',
-              selectedDayTextColor: '#ffffff'
-            }}
-            style={{
-              borderRadius: 16,
-              elevation: 4,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              backgroundColor: '#fff',
-              padding: 10,
-              marginBottom: 10
-            }}
-          />
-        );
-      case 'day':
-        return (
-          <View style={styles.dayView}>
-            <ThemedText style={styles.dayViewDate}>
-              {new Date(selectedDate).toLocaleDateString('tr-TR', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </ThemedText>
-            {selectedDateOrders.length > 0 ? (
-              <ScrollView>
-                {selectedDateOrders.map((order) => (
-                  <View key={order.id} style={styles.orderCard}>
-                    <View style={styles.orderHeader}>
-                      <View>
-                        <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
-                        <View style={styles.customerInfo}>
-                          <IconSymbol name="account" size={16} color="#666" />
-                          <ThemedText style={styles.customerName}>{order.customer_name}</ThemedText>
-                        </View>
-                      </View>
-                      <View style={[
-                        styles.processStatus,
-                        { backgroundColor: getProcessColor(order.process) + '15' }
-                      ]}>
-                        <IconSymbol
-                          name={getProcessIcon(order.process)}
-                          size={16}
-                          color={getProcessColor(order.process)}
-                        />
-                        <ThemedText style={[
-                          styles.processText,
-                          { color: getProcessColor(order.process) }
-                        ]}>
-                          {order.process}
-                        </ThemedText>
-                      </View>
-                    </View>
-
-                    <View style={styles.orderDetails}>
-                      <View style={styles.detailRow}>
-                        <IconSymbol name="map-marker" size={16} color="#00b51a" />
-                        <ThemedText style={styles.detailText}>
-                          {order.customer_city}, {order.customer_country}
-                        </ThemedText>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <IconSymbol name="account-tie" size={16} color="#00b51a" />
-                        <ThemedText style={styles.detailText}>{order.salesman}</ThemedText>
-                      </View>
-                      {order.conference && (
-                        <View style={styles.detailRow}>
-                          <IconSymbol name="presentation" size={16} color="#00b51a" />
-                          <ThemedText style={styles.detailText}>{order.conference}</ThemedText>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.productsContainer}>
-                      {JSON.parse(order.products).map((product: Product, index: number) => (
-                        <View key={index} style={styles.productItem}>
-                          <ThemedText style={styles.productName}>{product.name}</ThemedText>
-                          <ThemedText style={styles.productQuantity}>x{product.quantity}</ThemedText>
-                          <ThemedText style={styles.productPrice}>${product.price}</ThemedText>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.noOrdersContainer}>
-                <IconSymbol name="calendar-blank" size={48} color="#ddd" />
-                <ThemedText style={styles.noOrdersText}>
-                  Bu tarihte sipariş bulunmuyor
-                </ThemedText>
-              </View>
-            )}
-          </View>
-        );
-    }
-  };
-
-  // İstatistikleri hesapla
   const calculateStats = async () => {
     try {
       const response = await fetch('http://192.168.0.13:3000/api/orders');
       const orders: Order[] = await response.json();
-      
+
       const currentMonth = new Date(selectedDate).getMonth();
       const currentYear = new Date(selectedDate).getFullYear();
-      
+
       const monthOrders = orders.filter(order => {
         const orderDate = new Date(order.date);
         return orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear;
@@ -541,7 +142,7 @@ export default function CalendarScreen() {
         pendingOrders: pending
       });
     } catch (error) {
-      console.error('İstatistikler hesaplanırken hata:', error);
+      console.error('Istatistikler hesaplanirken hata:', error);
     }
   };
 
@@ -549,333 +150,511 @@ export default function CalendarScreen() {
     calculateStats();
   }, [selectedDate]);
 
+  const handleDayPress = (day: DateData) => {
+    setSelectedDate(day.dateString);
+    fetchOrdersByDate(day.dateString);
+    setShowOrdersModal(true);
+  };
+
+  const getStatusColor = (process: string) => {
+    switch (process) {
+      case 'Sipariş Oluşturuldu': return COLORS.info.main;
+      case 'Transfer Aşamasında': return COLORS.warning.main;
+      case 'Teslim Edildi': return COLORS.success.main;
+      case 'İptal Edildi': return COLORS.error.main;
+      default: return COLORS.light.text.tertiary;
+    }
+  };
+
+  const getStatusIcon = (process: string) => {
+    switch (process) {
+      case 'Sipariş Oluşturuldu': return 'clipboard-plus-outline';
+      case 'Transfer Aşamasında': return 'truck-fast-outline';
+      case 'Teslim Edildi': return 'check-circle';
+      case 'İptal Edildi': return 'close-circle';
+      default: return 'help-circle';
+    }
+  };
+
+  const renderViewTypeButton = (type: ViewType, label: string, icon: string) => (
+    <TouchableOpacity
+      style={[styles.viewTypeButton, viewType === type && styles.viewTypeButtonActive]}
+      onPress={() => setViewType(type)}
+    >
+      {viewType === type ? (
+        <LinearGradient
+          colors={COLORS.gradients.primary}
+          style={styles.viewTypeButtonGradient}
+        >
+          <IconSymbol name={icon} size={18} color="#fff" />
+          <ThemedText style={styles.viewTypeTextActive}>{label}</ThemedText>
+        </LinearGradient>
+      ) : (
+        <>
+          <IconSymbol name={icon} size={18} color={COLORS.light.text.tertiary} />
+          <ThemedText style={styles.viewTypeText}>{label}</ThemedText>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+
   const renderStats = () => (
     <View style={styles.statsContainer}>
       <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <View style={styles.statIconContainer}>
-            <IconSymbol name="shopping" size={24} color="#00b51a" />
-          </View>
-          <View style={styles.statContent}>
-            <ThemedText style={styles.statValue}>{monthlyStats.totalOrders}</ThemedText>
-            <ThemedText style={styles.statLabel}>Toplam Sipariş</ThemedText>
-          </View>
+        <View style={[styles.statCard, { borderLeftColor: COLORS.primary.main }]}>
+          <IconSymbol name="package-variant" size={20} color={COLORS.primary.main} />
+          <ThemedText style={styles.statValue}>{monthlyStats.totalOrders}</ThemedText>
+          <ThemedText style={styles.statLabel}>Siparis</ThemedText>
         </View>
-
-        <View style={styles.statCard}>
-          <View style={styles.statIconContainer}>
-            <IconSymbol name="cash" size={24} color="#2196F3" />
-          </View>
-          <View style={styles.statContent}>
-            <ThemedText style={styles.statValue}>${monthlyStats.totalRevenue.toFixed(2)}</ThemedText>
-            <ThemedText style={styles.statLabel}>Toplam Gelir</ThemedText>
-          </View>
+        <View style={[styles.statCard, { borderLeftColor: COLORS.success.main }]}>
+          <IconSymbol name="check-circle" size={20} color={COLORS.success.main} />
+          <ThemedText style={styles.statValue}>{monthlyStats.deliveredOrders}</ThemedText>
+          <ThemedText style={styles.statLabel}>Teslim</ThemedText>
         </View>
-      </View>
-
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <View style={styles.statIconContainer}>
-            <IconSymbol name="check-circle" size={24} color="#4CAF50" />
-          </View>
-          <View style={styles.statContent}>
-            <ThemedText style={styles.statValue}>{monthlyStats.deliveredOrders}</ThemedText>
-            <ThemedText style={styles.statLabel}>Teslim Edilen</ThemedText>
-          </View>
-        </View>
-
-        <View style={styles.statCard}>
-          <View style={styles.statIconContainer}>
-            <IconSymbol name="truck-delivery" size={24} color="#FF9800" />
-          </View>
-          <View style={styles.statContent}>
-            <ThemedText style={styles.statValue}>{monthlyStats.pendingOrders}</ThemedText>
-            <ThemedText style={styles.statLabel}>Transfer Aşamasında</ThemedText>
-          </View>
+        <View style={[styles.statCard, { borderLeftColor: COLORS.warning.main }]}>
+          <IconSymbol name="truck-fast-outline" size={20} color={COLORS.warning.main} />
+          <ThemedText style={styles.statValue}>{monthlyStats.pendingOrders}</ThemedText>
+          <ThemedText style={styles.statLabel}>Transfer</ThemedText>
         </View>
       </View>
     </View>
   );
 
-  return (
-    <View style={styles.container}>
-      {renderHeader()}
-      <View style={styles.content}>
-        <View style={styles.calendarContainer}>
-          {renderCalendarView()}
+  const renderOrdersModal = () => (
+    <Modal
+      visible={showOrdersModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowOrdersModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHandle} />
+
+          <View style={styles.modalHeader}>
+            <View>
+              <ThemedText style={styles.modalTitle}>
+                {new Date(selectedDate).toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                })}
+              </ThemedText>
+              <ThemedText style={styles.modalSubtitle}>
+                {selectedDateOrders.length} siparis
+              </ThemedText>
+            </View>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowOrdersModal(false)}
+            >
+              <IconSymbol name="close" size={24} color={COLORS.light.text.secondary} />
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={COLORS.primary.main} />
+            </View>
+          ) : selectedDateOrders.length > 0 ? (
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {selectedDateOrders.map((order) => {
+                const statusColor = getStatusColor(order.process);
+                const statusIcon = getStatusIcon(order.process);
+                const products: Product[] = JSON.parse(order.products);
+                const total = products.reduce((sum, p) => sum + parseFloat(p.price) * parseInt(p.quantity), 0);
+
+                return (
+                  <View key={order.id} style={styles.orderCard}>
+                    <View style={styles.orderHeader}>
+                      <View>
+                        <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
+                        <View style={styles.customerInfo}>
+                          <IconSymbol name="account" size={14} color={COLORS.light.text.tertiary} />
+                          <ThemedText style={styles.customerName}>{order.customer_name}</ThemedText>
+                        </View>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
+                        <IconSymbol name={statusIcon} size={14} color={statusColor} />
+                        <ThemedText style={[styles.statusText, { color: statusColor }]}>
+                          {order.process === 'Sipariş Oluşturuldu' ? 'Bekliyor' :
+                           order.process === 'Transfer Aşamasında' ? 'Transfer' :
+                           order.process === 'Teslim Edildi' ? 'Teslim' : 'Iptal'}
+                        </ThemedText>
+                      </View>
+                    </View>
+
+                    <View style={styles.orderDetails}>
+                      <View style={styles.detailRow}>
+                        <IconSymbol name="map-marker" size={14} color={COLORS.primary.main} />
+                        <ThemedText style={styles.detailText}>
+                          {order.customer_city}, {order.customer_country}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <IconSymbol name="package-variant" size={14} color={COLORS.primary.main} />
+                        <ThemedText style={styles.detailText}>
+                          {products.length} urun
+                        </ThemedText>
+                      </View>
+                    </View>
+
+                    <View style={styles.orderFooter}>
+                      <ThemedText style={styles.totalLabel}>Toplam</ThemedText>
+                      <ThemedText style={styles.totalValue}>${total.toFixed(2)}</ThemedText>
+                    </View>
+                  </View>
+                );
+              })}
+              <View style={{ height: 20 }} />
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyState}>
+              <IconSymbol name="calendar-blank" size={64} color={COLORS.light.border} />
+              <ThemedText style={styles.emptyStateTitle}>Siparis Yok</ThemedText>
+              <ThemedText style={styles.emptyStateText}>
+                Bu tarihte siparis bulunmuyor
+              </ThemedText>
+            </View>
+          )}
         </View>
       </View>
+    </Modal>
+  );
+
+  const calendarTheme = {
+    backgroundColor: 'transparent',
+    calendarBackground: 'transparent',
+    textSectionTitleColor: COLORS.light.text.tertiary,
+    selectedDayBackgroundColor: COLORS.primary.main,
+    selectedDayTextColor: '#ffffff',
+    todayTextColor: COLORS.primary.main,
+    todayBackgroundColor: `${COLORS.primary.main}15`,
+    dayTextColor: COLORS.light.text.primary,
+    textDisabledColor: COLORS.light.border,
+    dotColor: COLORS.primary.main,
+    selectedDotColor: '#ffffff',
+    arrowColor: COLORS.primary.main,
+    monthTextColor: COLORS.light.text.primary,
+    textDayFontSize: 15,
+    textMonthFontSize: 18,
+    textDayHeaderFontSize: 13,
+    textDayFontWeight: '500' as const,
+    textMonthFontWeight: '700' as const,
+    textDayHeaderFontWeight: '600' as const,
+  };
+
+  return (
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      {/* Header */}
+      <LinearGradient
+        colors={COLORS.gradients.primary}
+        style={styles.headerCard}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerIcon}>
+            <IconSymbol name="calendar-month" size={28} color="#fff" />
+          </View>
+          <View>
+            <ThemedText style={styles.headerTitle}>Takvim</ThemedText>
+            <ThemedText style={styles.headerSubtitle}>
+              Siparislerinizi takip edin
+            </ThemedText>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* View Type Selector */}
+      <View style={styles.viewTypeContainer}>
+        {renderViewTypeButton('month', 'Ay', 'calendar-month')}
+        {renderViewTypeButton('week', 'Hafta', 'calendar-week')}
+        {renderViewTypeButton('day', 'Gun', 'calendar-today')}
+      </View>
+
+      {/* Stats */}
+      {renderStats()}
+
+      {/* Calendar */}
+      <View style={styles.calendarContainer}>
+        <Calendar
+          current={selectedDate}
+          onDayPress={handleDayPress}
+          markedDates={{
+            ...markedDates,
+            [selectedDate]: {
+              ...(markedDates[selectedDate] || {}),
+              selected: true,
+              selectedColor: COLORS.primary.main
+            }
+          }}
+          theme={calendarTheme}
+          style={styles.calendar}
+          enableSwipeMonths={true}
+          hideExtraDays={true}
+          firstDay={1}
+        />
+      </View>
+
       {renderOrdersModal()}
-    </View>
+
+      <View style={{ height: 80 }} />
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.light.background,
   },
-  header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
+  headerCard: {
+    marginHorizontal: SPACING.base,
+    marginTop: SPACING.base,
+    marginBottom: SPACING.md,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    ...SHADOWS.md,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.lg,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: 'rgba(255,255,255,0.8)',
   },
   viewTypeContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
+    marginHorizontal: SPACING.base,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
     padding: 4,
+    ...SHADOWS.sm,
   },
   viewTypeButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginHorizontal: 2,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.xs,
   },
   viewTypeButtonActive: {
-    backgroundColor: '#00b51a',
+    overflow: 'hidden',
   },
-  viewTypeText: {
-    fontSize: 14,
-    color: '#00b51a',
-    marginLeft: 4,
-  },
-  viewTypeTextActive: {
-    color: '#fff',
-  },
-  calendarContainer: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: '#fff',
-  },
-  calendar: {
-    backgroundColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderRadius: 16,
-  },
-  weekCalendar: {
-    backgroundColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderRadius: 16,
+  viewTypeButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.xs,
     width: '100%',
   },
-  dayView: {
+  viewTypeText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.tertiary,
+  },
+  viewTypeTextActive: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFFFFF',
+  },
+  statsContainer: {
+    paddingHorizontal: SPACING.base,
+    marginTop: SPACING.md,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  statCard: {
     flex: 1,
-    padding: 16,
-  },
-  dayViewDate: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
-  },
-  eventItem: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  eventTime: {
-    flexDirection: 'row',
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderLeftWidth: 3,
     alignItems: 'center',
-    marginBottom: 8,
+    ...SHADOWS.sm,
   },
-  eventTimeText: {
-    fontSize: 14,
-    color: '#00b51a',
-    marginLeft: 4,
+  statValue: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+    marginTop: SPACING.xs,
   },
-  eventContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  statLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
   },
-  eventName: {
-    fontSize: 16,
-    color: '#333',
+  calendarContainer: {
+    marginHorizontal: SPACING.base,
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    ...SHADOWS.md,
+  },
+  calendar: {
+    borderRadius: RADIUS.xl,
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    padding: 16,
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: COLORS.light.surface,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
     maxHeight: '80%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.light.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: COLORS.light.border,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+  },
+  modalSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.light.surfaceVariant,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
-    padding: 16,
+    padding: SPACING.lg,
   },
   loadingContainer: {
-    padding: 32,
+    padding: SPACING['3xl'],
     alignItems: 'center',
   },
-  noOrdersContainer: {
-    padding: 32,
+  emptyState: {
     alignItems: 'center',
+    paddingVertical: SPACING['3xl'],
   },
-  noOrdersText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+  emptyStateTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginTop: SPACING.md,
+  },
+  emptyStateText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: SPACING.xs,
   },
   orderCard: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: COLORS.light.surfaceVariant,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    marginBottom: SPACING.md,
   },
   orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   orderNo: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
     marginBottom: 4,
   },
   customerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   customerName: {
-    marginLeft: 6,
-    fontSize: 14,
-    color: '#666',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
   },
-  processStatus: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 6,
-    paddingHorizontal: 10,
-    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.full,
+    gap: 4,
   },
-  processText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '600',
+  statusText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
   orderDetails: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: SPACING.sm,
   },
   detailText: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#666',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
   },
-  productsContainer: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 12,
-  },
-  productItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  productName: {
-    flex: 1,
-    fontSize: 14,
-    color: '#333',
-  },
-  productQuantity: {
-    marginHorizontal: 12,
-    fontSize: 14,
-    color: '#666',
-  },
-  productPrice: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#00b51a',
-  },
-  content: {
-    flex: 1,
-  },
-  statsContainer: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  statsRow: {
+  orderFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  statCard: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
   },
-  statContent: {
-    flex: 1,
-    justifyContent: 'center',
+  totalLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
   },
-  statValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 2,
+  totalValue: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary.main,
   },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-  },
-}); 
+});
