@@ -11,6 +11,7 @@ import {
   Dimensions,
   StatusBar,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import ThemedText from './ThemedText';
 import IconSymbol from './ui/IconSymbol';
@@ -18,16 +19,26 @@ import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 
 const { width, height } = Dimensions.get('window');
+const SESSION_KEY = 'user_session';
+
+interface UserSession {
+  userName: string;
+  userRole: string;
+  permissions: string[];
+  email: string;
+}
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
@@ -50,7 +61,44 @@ export default function Login() {
   const logoScale = useRef(new Animated.Value(0.9)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
 
+  // Check for existing session on mount
   useEffect(() => {
+    checkExistingSession();
+  }, []);
+
+  const checkExistingSession = async () => {
+    try {
+      const sessionData = await AsyncStorage.getItem(SESSION_KEY);
+      if (sessionData) {
+        const session: UserSession = JSON.parse(sessionData);
+        // Auto-login with saved session
+        router.replace({
+          pathname: '/components/MainScreen',
+          params: {
+            userName: session.userName,
+            userRole: session.userRole,
+            permissions: JSON.stringify(session.permissions)
+          }
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('Session check error:', error);
+    } finally {
+      setIsCheckingSession(false);
+      startAnimations();
+    }
+  };
+
+  const saveSession = async (userData: UserSession) => {
+    try {
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
+    } catch (error) {
+      console.error('Failed to save session:', error);
+    }
+  };
+
+  const startAnimations = () => {
     // Initial animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -82,7 +130,7 @@ export default function Login() {
         }),
       ]).start();
     }, 200);
-  }, []);
+  };
 
   const animateFormSwitch = () => {
     Animated.sequence([
@@ -120,6 +168,14 @@ export default function Login() {
       if (!response.ok) {
         throw new Error(data.error || 'Giris basarisiz');
       }
+
+      // Save session for auto-login
+      await saveSession({
+        userName: data.Ad_Soyad,
+        userRole: data.yetki,
+        permissions: data.permissions || [],
+        email: loginData.email,
+      });
 
       router.replace({
         pathname: '/components/MainScreen',
@@ -235,6 +291,24 @@ export default function Login() {
       </View>
     );
   };
+
+  // Show loading screen while checking session
+  if (isCheckingSession) {
+    return (
+      <View style={styles.loadingScreen}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary.main} />
+        <View style={styles.loadingLogoContainer}>
+          <Image
+            source={require('../../assets/images/aicologo.png')}
+            style={styles.loadingLogo}
+            resizeMode="contain"
+          />
+        </View>
+        <ThemedText style={styles.loadingBrandName}>Koyuncu Hali</ThemedText>
+        <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: SPACING.xl }} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -405,6 +479,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.primary.main,
+  },
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: COLORS.primary.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingLogoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: RADIUS['2xl'],
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  loadingLogo: {
+    width: 64,
+    height: 64,
+    tintColor: '#FFFFFF',
+  },
+  loadingBrandName: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
   },
   background: {
     position: 'absolute',

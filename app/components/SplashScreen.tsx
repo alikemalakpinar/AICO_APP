@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: COLORS.secondary.main,
+    backgroundColor: COLORS.primary.accent,
     opacity: 0.06,
     bottom: 100,
     left: -100,

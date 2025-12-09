@@ -10,6 +10,8 @@ import {
   Dimensions,
   ActivityIndicator,
   StatusBar,
+  Linking,
+  Alert,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import ThemedText from '../ThemedText';
@@ -180,6 +182,51 @@ export default function OrdersScreen() {
       currency: 'USD',
       minimumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const shareViaWhatsApp = (order: Order) => {
+    const products: Product[] = JSON.parse(order.products);
+    const total = calculateOrderTotal(products);
+
+    const productsList = products.map(p =>
+      `• ${p.name} (${p.quantity} adet) - ${formatCurrency(parseFloat(p.price))}`
+    ).join('\n');
+
+    const message = `
+🧾 *Sipariş Detayı*
+━━━━━━━━━━━━━━━━
+📋 Sipariş No: *${order.order_no}*
+📅 Tarih: ${new Date(order.date).toLocaleDateString('tr-TR')}
+
+👤 *Müşteri Bilgileri*
+Ad: ${order.customer_name}
+📞 Tel: ${order.customer_phone}
+📍 ${order.customer_city}, ${order.customer_country}
+
+📦 *Ürünler*
+${productsList}
+
+💰 *Toplam: ${formatCurrency(total)}*
+━━━━━━━━━━━━━━━━
+_Koyuncu Halı_
+    `.trim();
+
+    const encodedMessage = encodeURIComponent(message);
+    const phoneNumber = order.customer_phone.replace(/[^0-9]/g, '');
+
+    if (phoneNumber) {
+      Linking.openURL(`whatsapp://send?phone=${phoneNumber}&text=${encodedMessage}`);
+    } else {
+      Linking.openURL(`whatsapp://send?text=${encodedMessage}`);
+    }
+  };
+
+  const callCustomer = (phone: string) => {
+    if (phone) {
+      Linking.openURL(`tel:${phone}`);
+    } else {
+      Alert.alert('Hata', 'Telefon numarası bulunamadı');
+    }
   };
 
   const getFilterCount = (filterKey: FilterKey) => {
@@ -429,6 +476,26 @@ export default function OrdersScreen() {
                 )}
               </View>
             </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsContainer}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.callBtn]}
+                onPress={() => callCustomer(selectedOrder.customer_phone)}
+              >
+                <IconSymbol name="phone" size={20} color={COLORS.success.main} />
+                <ThemedText style={[styles.actionBtnText, { color: COLORS.success.main }]}>Ara</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.whatsappBtn]}
+                onPress={() => shareViaWhatsApp(selectedOrder)}
+              >
+                <IconSymbol name="whatsapp" size={20} color="#25D366" />
+                <ThemedText style={[styles.actionBtnText, { color: '#25D366' }]}>WhatsApp</ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ height: 40 }} />
           </ScrollView>
         </View>
 
@@ -972,5 +1039,36 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.primary,
+  },
+
+  // Action Buttons
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.base,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.sm,
+  },
+  callBtn: {
+    backgroundColor: COLORS.success.muted,
+    borderWidth: 1,
+    borderColor: COLORS.success.main + '30',
+  },
+  whatsappBtn: {
+    backgroundColor: '#E7F9EE',
+    borderWidth: 1,
+    borderColor: '#25D36630',
+  },
+  actionBtnText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
 });

@@ -31,6 +31,9 @@ export const API_ENDPOINTS = {
   register: `${API_BASE_URL}/api/register`,
   orders: `${API_BASE_URL}/api/orders`,
   users: `${API_BASE_URL}/api/users`,
+  customers: `${API_BASE_URL}/api/customers`,
+  customersSearch: `${API_BASE_URL}/api/customers/search`,
+  products: `${API_BASE_URL}/api/products`,
 };
 
 // Fetch with timeout wrapper
