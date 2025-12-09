@@ -15,8 +15,6 @@ import ThemedText from './ThemedText';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 
@@ -27,7 +25,7 @@ import OrdersScreen from './screens/OrdersScreen';
 import CalendarScreen from './screens/CalendarScreen';
 import SettingsScreen from './screens/SettingsScreen';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 interface Order {
   id: number;
@@ -66,7 +64,6 @@ export default function MainScreen() {
   const permissions = permissionsStr ? JSON.parse(permissionsStr as string) : [];
 
   // Animation refs
-  const tabAnimations = useRef<Animated.Value[]>([]).current;
   const indicatorPosition = useRef(new Animated.Value(0)).current;
   const headerOpacity = useRef(new Animated.Value(0)).current;
 
@@ -103,16 +100,10 @@ export default function MainScreen() {
 
   // Initialize animations
   useEffect(() => {
-    tabs.forEach((_, index) => {
-      if (!tabAnimations[index]) {
-        tabAnimations[index] = new Animated.Value(index === 0 ? 1 : 0);
-      }
-    });
-
     // Header fade in
     Animated.timing(headerOpacity, {
       toValue: 1,
-      duration: 500,
+      duration: 400,
       useNativeDriver: true,
     }).start();
   }, []);
@@ -138,27 +129,12 @@ export default function MainScreen() {
   const handleTabPress = (index: number) => {
     if (index === activeTab) return;
 
-    // Animate out old tab
-    Animated.timing(tabAnimations[activeTab], {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-
-    // Animate in new tab
-    Animated.spring(tabAnimations[index], {
-      toValue: 1,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: true,
-    }).start();
-
     // Move indicator
-    const tabWidth = (width - 40) / tabs.length;
+    const tabWidth = (width - 32) / tabs.length;
     Animated.spring(indicatorPosition, {
       toValue: index * tabWidth,
-      tension: 50,
-      friction: 7,
+      tension: 60,
+      friction: 8,
       useNativeDriver: true,
     }).start();
 
@@ -221,72 +197,59 @@ export default function MainScreen() {
     }
   };
 
-  const tabWidth = (width - 40) / tabs.length;
+  const tabWidth = (width - 32) / tabs.length;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.light.background} />
 
-      {/* Header */}
+      {/* Minimal Header */}
       <Animated.View style={[
         styles.headerContainer,
         { paddingTop: insets.top || 20, opacity: headerOpacity }
       ]}>
-        <LinearGradient
-          colors={['#FFFFFF', '#F8FAFC']}
-          style={styles.headerGradient}
-        >
-          <View style={styles.header}>
-            {/* Logo and Brand */}
-            <View style={styles.headerLeft}>
-              <View style={styles.logoWrapper}>
-                <LinearGradient
-                  colors={COLORS.gradients.primary}
-                  style={styles.logoGradient}
-                >
-                  <Image
-                    source={require('../../assets/images/aicologo.png')}
-                    style={styles.headerLogo}
-                    resizeMode="contain"
-                  />
-                </LinearGradient>
-              </View>
-              <View style={styles.brandInfo}>
-                <ThemedText style={styles.headerTitle}>Koyuncu Hali</ThemedText>
-                <ThemedText style={styles.headerSubtitle}>{userRole}</ThemedText>
-              </View>
+        <View style={styles.header}>
+          {/* Logo and Brand */}
+          <View style={styles.headerLeft}>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('../../assets/images/aicologo.png')}
+                style={styles.headerLogo}
+                resizeMode="contain"
+              />
             </View>
-
-            {/* Actions */}
-            <View style={styles.headerRight}>
-              {tabs[activeTab].label === 'Siparisler' &&
-               (userRole === 'Patron' ||
-                userRole === 'Operasyon Sorumlusu' ||
-                permissions.includes('belge_olusturma')) && (
-                <TouchableOpacity
-                  style={styles.exportButton}
-                  onPress={generateCSV}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={COLORS.gradients.primary}
-                    style={styles.exportButtonGradient}
-                  >
-                    <IconSymbol name="file-export-outline" size={18} color="#fff" />
-                    <ThemedText style={styles.exportButtonText}>Disari Aktar</ThemedText>
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.logoutButton}
-                onPress={handleLogout}
-                activeOpacity={0.7}
-              >
-                <IconSymbol name="logout" size={22} color={COLORS.error.main} />
-              </TouchableOpacity>
+            <View style={styles.brandInfo}>
+              <ThemedText style={styles.headerTitle}>Koyuncu Hali</ThemedText>
+              <View style={styles.roleTag}>
+                <ThemedText style={styles.roleText}>{userRole}</ThemedText>
+              </View>
             </View>
           </View>
-        </LinearGradient>
+
+          {/* Actions */}
+          <View style={styles.headerRight}>
+            {tabs[activeTab].label === 'Siparisler' &&
+             (userRole === 'Patron' ||
+              userRole === 'Operasyon Sorumlusu' ||
+              permissions.includes('belge_olusturma')) && (
+              <TouchableOpacity
+                style={styles.exportButton}
+                onPress={generateCSV}
+                activeOpacity={0.7}
+              >
+                <IconSymbol name="file-export-outline" size={18} color={COLORS.primary.accent} />
+                <ThemedText style={styles.exportButtonText}>Aktar</ThemedText>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleLogout}
+              activeOpacity={0.7}
+            >
+              <IconSymbol name="logout" size={20} color={COLORS.error.main} />
+            </TouchableOpacity>
+          </View>
+        </View>
       </Animated.View>
 
       {/* Main Content */}
@@ -294,70 +257,48 @@ export default function MainScreen() {
         {getCurrentScreen()}
       </View>
 
-      {/* Bottom Navigation */}
+      {/* Clean Bottom Navigation */}
       <View style={[styles.navWrapper, { paddingBottom: insets.bottom || 10 }]}>
-        <BlurView intensity={80} tint="light" style={styles.navBlur}>
-          <View style={styles.navbar}>
-            {/* Animated Indicator */}
-            <Animated.View
-              style={[
-                styles.indicator,
-                {
-                  width: tabWidth - 16,
-                  transform: [{ translateX: Animated.add(indicatorPosition, 8) }]
-                }
-              ]}
-            >
-              <LinearGradient
-                colors={COLORS.gradients.primary}
-                style={styles.indicatorGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              />
-            </Animated.View>
+        <View style={styles.navbar}>
+          {/* Sliding Indicator */}
+          <Animated.View
+            style={[
+              styles.indicator,
+              {
+                width: tabWidth - 12,
+                transform: [{ translateX: Animated.add(indicatorPosition, 6) }]
+              }
+            ]}
+          />
 
-            {/* Tab Buttons */}
-            {tabs.map((tab, index) => {
-              const isActive = activeTab === index;
-              const animation = tabAnimations[index] || new Animated.Value(0);
+          {/* Tab Buttons */}
+          {tabs.map((tab, index) => {
+            const isActive = activeTab === index;
 
-              const scale = animation.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 1.1],
-              });
-
-              const translateY = animation.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, -4],
-              });
-
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.tabButton, { width: tabWidth }]}
-                  onPress={() => handleTabPress(index)}
-                  activeOpacity={0.7}
-                >
-                  <Animated.View
-                    style={[
-                      styles.tabContent,
-                      { transform: [{ scale }, { translateY }] }
-                    ]}
-                  >
-                    <IconSymbol
-                      name={isActive ? tab.iconFilled : tab.icon}
-                      size={24}
-                      color={isActive ? '#FFFFFF' : COLORS.light.text.tertiary}
-                    />
-                    {isActive && (
-                      <ThemedText style={styles.tabLabel}>{tab.label}</ThemedText>
-                    )}
-                  </Animated.View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </BlurView>
+            return (
+              <TouchableOpacity
+                key={index}
+                style={[styles.tabButton, { width: tabWidth }]}
+                onPress={() => handleTabPress(index)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.tabContent}>
+                  <IconSymbol
+                    name={isActive ? tab.iconFilled : tab.icon}
+                    size={22}
+                    color={isActive ? '#FFFFFF' : COLORS.light.text.tertiary}
+                  />
+                  <ThemedText style={[
+                    styles.tabLabel,
+                    isActive ? styles.tabLabelActive : styles.tabLabelInactive
+                  ]}>
+                    {tab.label}
+                  </ThemedText>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -366,15 +307,12 @@ export default function MainScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.light.background,
+    backgroundColor: COLORS.light.backgroundSecondary,
   },
   headerContainer: {
-    zIndex: 100,
-  },
-  headerGradient: {
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
-    ...SHADOWS.md,
+    backgroundColor: COLORS.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.border,
   },
   header: {
     flexDirection: 'row',
@@ -387,20 +325,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  logoWrapper: {
-    marginRight: SPACING.md,
-  },
-  logoGradient: {
-    width: 44,
-    height: 44,
+  logoContainer: {
+    width: 40,
+    height: 40,
     borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary.main,
     justifyContent: 'center',
     alignItems: 'center',
-    ...SHADOWS.sm,
+    marginRight: SPACING.md,
   },
   headerLogo: {
-    width: 30,
-    height: 30,
+    width: 26,
+    height: 26,
+    tintColor: '#FFFFFF',
   },
   brandInfo: {
     justifyContent: 'center',
@@ -409,10 +346,18 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.lg,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
+    letterSpacing: -0.3,
   },
-  headerSubtitle: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary.main,
+  roleTag: {
+    backgroundColor: COLORS.primary.accent + '15',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.xs,
+    marginTop: 2,
+  },
+  roleText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.primary.accent,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   headerRight: {
@@ -421,26 +366,24 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   exportButton: {
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-  },
-  exportButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.primary.accent + '10',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
     gap: SPACING.xs,
   },
   exportButtonText: {
-    color: '#FFFFFF',
+    color: COLORS.primary.accent,
     fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
   logoutButton: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.error.bg,
+    backgroundColor: COLORS.error.muted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -452,36 +395,29 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: SPACING.lg,
-  },
-  navBlur: {
-    borderRadius: RADIUS['2xl'],
-    overflow: 'hidden',
-    ...SHADOWS.xl,
+    paddingHorizontal: SPACING.base,
   },
   navbar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: RADIUS['2xl'],
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
     paddingVertical: SPACING.sm,
-    paddingHorizontal: 0,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+    ...SHADOWS.md,
     position: 'relative',
   },
   indicator: {
     position: 'absolute',
-    top: SPACING.sm,
-    bottom: SPACING.sm,
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-  },
-  indicatorGradient: {
-    flex: 1,
-    borderRadius: RADIUS.xl,
+    top: 6,
+    bottom: 6,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.primary.main,
   },
   tabButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.xs,
     zIndex: 1,
   },
   tabContent: {
@@ -490,9 +426,14 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   tabLabel: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: '#FFFFFF',
+    fontSize: TYPOGRAPHY.fontSize['2xs'],
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
     marginTop: 2,
+  },
+  tabLabelActive: {
+    color: '#FFFFFF',
+  },
+  tabLabelInactive: {
+    color: COLORS.light.text.tertiary,
   },
 });
