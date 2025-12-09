@@ -7,16 +7,15 @@ import {
   Modal,
   Animated,
   RefreshControl,
+  StatusBar,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ORDER_STATUS } from '../../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 const { width } = Dimensions.get('window');
-const cardWidth = (width - SPACING.base * 3) / 2;
 
 interface OrderStats {
   totalOrders: number;
@@ -36,16 +35,6 @@ interface HomeScreenProps {
   permissions?: string[];
 }
 
-interface StatCard {
-  title: string;
-  value: string;
-  icon: string;
-  color: string;
-  gradient: string[];
-  trend?: string;
-  trendUp?: boolean;
-}
-
 export default function HomeScreen({ onTabChange, userName, userRole, permissions = [] }: HomeScreenProps) {
   const [stats, setStats] = useState<OrderStats>({
     totalOrders: 0,
@@ -57,25 +46,19 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
     cancelledOrders: 0,
     pendingOrders: 0,
   });
-  const [showReports, setShowReports] = useState(false);
+  const [showFinancials, setShowFinancials] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const cardAnimations = useRef([...Array(8)].map(() => new Animated.Value(0))).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
     fetchOrderStats();
-    startAnimations();
-  }, []);
-
-  const startAnimations = () => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }),
       Animated.spring(slideAnim, {
@@ -85,19 +68,7 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
         useNativeDriver: true,
       }),
     ]).start();
-
-    // Staggered card animations
-    cardAnimations.forEach((anim, index) => {
-      setTimeout(() => {
-        Animated.spring(anim, {
-          toValue: 1,
-          tension: 50,
-          friction: 8,
-          useNativeDriver: true,
-        }).start();
-      }, index * 100);
-    });
-  };
+  }, []);
 
   const fetchOrderStats = async () => {
     try {
@@ -130,20 +101,18 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
         }
       });
 
-      const netProfit = monthlyRevenue - monthlyExpenses;
-
       setStats({
         totalOrders,
         monthlyRevenue,
         monthlyExpenses,
-        netProfit,
+        netProfit: monthlyRevenue - monthlyExpenses,
         deliveredOrders,
         inTransferOrders,
         cancelledOrders,
         pendingOrders,
       });
     } catch (error) {
-      console.error('Istatistikler yuklenirken hata:', error);
+      console.error('Istatistikler alinirken hata:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -155,342 +124,315 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
     fetchOrderStats();
   };
 
-  const canViewFinancials = userRole === 'Patron' || permissions.includes('finansal_goruntuleme');
-  const canViewReports = userRole === 'Patron' || permissions.includes('rapor_goruntuleme');
-  const canCreateOrder = userRole !== 'Depo Görevlisi' && userRole !== 'Lojistik Sorumlusu';
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Gunaydin';
-    if (hour < 18) return 'Iyi gunler';
-    return 'Iyi aksamlar';
+    if (hour < 12) return 'Günaydın';
+    if (hour < 18) return 'İyi günler';
+    return 'İyi akşamlar';
   };
 
-  const statusCards: StatCard[] = [
-    {
-      title: 'Toplam Siparis',
-      value: stats.totalOrders.toString(),
-      icon: 'package-variant',
-      color: COLORS.primary.main,
-      gradient: COLORS.gradients.primary,
-    },
+  const canViewFinancials = userRole === 'Patron' || permissions.includes('finansal_goruntuleme');
+
+  const statusCards = [
     {
       title: 'Bekleyen',
-      value: stats.pendingOrders.toString(),
-      icon: 'clock-outline',
+      value: stats.pendingOrders,
       color: COLORS.info.main,
-      gradient: COLORS.gradients.info,
+      bgColor: COLORS.info.muted,
+      icon: 'clock-outline',
     },
     {
       title: 'Transferde',
-      value: stats.inTransferOrders.toString(),
-      icon: 'truck-fast-outline',
+      value: stats.inTransferOrders,
       color: COLORS.warning.main,
-      gradient: COLORS.gradients.warning,
+      bgColor: COLORS.warning.muted,
+      icon: 'truck-outline',
     },
     {
       title: 'Teslim Edildi',
-      value: stats.deliveredOrders.toString(),
-      icon: 'check-circle-outline',
+      value: stats.deliveredOrders,
       color: COLORS.success.main,
-      gradient: COLORS.gradients.success,
+      bgColor: COLORS.success.muted,
+      icon: 'check-circle-outline',
+    },
+    {
+      title: 'İptal',
+      value: stats.cancelledOrders,
+      color: COLORS.error.main,
+      bgColor: COLORS.error.muted,
+      icon: 'close-circle-outline',
     },
   ];
 
-  const financeCards: StatCard[] = canViewFinancials ? [
+  const quickActions = [
     {
-      title: 'Aylik Ciro',
-      value: `$${stats.monthlyRevenue.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
-      icon: 'trending-up',
-      color: COLORS.info.main,
-      gradient: COLORS.gradients.info,
-      trend: '+12.5%',
-      trendUp: true,
+      title: 'Yeni Sipariş',
+      subtitle: 'Sipariş oluştur',
+      icon: 'plus',
+      onPress: () => onTabChange(1),
     },
     {
-      title: 'Giderler',
-      value: `$${stats.monthlyExpenses.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
-      icon: 'trending-down',
-      color: COLORS.error.main,
-      gradient: COLORS.gradients.error,
-      trend: '-3.2%',
-      trendUp: false,
+      title: 'Siparişler',
+      subtitle: 'Tümünü gör',
+      icon: 'format-list-bulleted',
+      onPress: () => onTabChange(2),
     },
     {
-      title: 'Net Kar',
-      value: `$${stats.netProfit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
-      icon: 'chart-line',
-      color: COLORS.success.main,
-      gradient: COLORS.gradients.success,
-      trend: '+8.7%',
-      trendUp: true,
+      title: 'Takvim',
+      subtitle: 'Planla',
+      icon: 'calendar-outline',
+      onPress: () => onTabChange(3),
     },
-  ] : [];
-
-  const renderStatCard = (stat: StatCard, index: number, isLarge: boolean = false) => {
-    const animation = cardAnimations[index] || new Animated.Value(1);
-    const scale = animation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.8, 1],
-    });
-
-    return (
-      <Animated.View
-        key={stat.title}
-        style={[
-          isLarge ? styles.financeCard : styles.statusCard,
-          { opacity: animation, transform: [{ scale }] }
-        ]}
-      >
-        <TouchableOpacity activeOpacity={0.8} style={styles.cardTouchable}>
-          <LinearGradient
-            colors={stat.gradient}
-            style={styles.cardGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.cardHeader}>
-              <View style={styles.cardIconContainer}>
-                <IconSymbol name={stat.icon} size={isLarge ? 28 : 24} color="#fff" />
-              </View>
-              {stat.trend && (
-                <View style={[
-                  styles.trendBadge,
-                  { backgroundColor: stat.trendUp ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.2)' }
-                ]}>
-                  <IconSymbol
-                    name={stat.trendUp ? 'arrow-up' : 'arrow-down'}
-                    size={12}
-                    color="#fff"
-                  />
-                  <ThemedText style={styles.trendText}>{stat.trend}</ThemedText>
-                </View>
-              )}
-            </View>
-            <View style={styles.cardContent}>
-              <ThemedText style={[styles.cardValue, isLarge && styles.cardValueLarge]}>
-                {stat.value}
-              </ThemedText>
-              <ThemedText style={styles.cardTitle}>{stat.title}</ThemedText>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
-
-  const renderQuickAction = (
-    title: string,
-    subtitle: string,
-    icon: string,
-    gradient: string[],
-    onPress: () => void
-  ) => (
-    <TouchableOpacity
-      style={styles.quickAction}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <LinearGradient
-        colors={gradient}
-        style={styles.quickActionGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      >
-        <View style={styles.quickActionIcon}>
-          <IconSymbol name={icon} size={28} color="#fff" />
-        </View>
-        <View style={styles.quickActionText}>
-          <ThemedText style={styles.quickActionTitle}>{title}</ThemedText>
-          <ThemedText style={styles.quickActionSubtitle}>{subtitle}</ThemedText>
-        </View>
-        <IconSymbol name="chevron-right" size={24} color="rgba(255,255,255,0.7)" />
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-
-  const renderReportsModal = () => (
-    <Modal
-      visible={showReports}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setShowReports(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHandle} />
-          <View style={styles.modalHeader}>
-            <ThemedText style={styles.modalTitle}>Finansal Ozet</ThemedText>
-            <TouchableOpacity
-              onPress={() => setShowReports(false)}
-              style={styles.modalCloseButton}
-            >
-              <IconSymbol name="close" size={24} color={COLORS.light.text.secondary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.modalBody}>
-            {/* Summary Cards */}
-            <View style={styles.summaryRow}>
-              <View style={[styles.summaryCard, { backgroundColor: COLORS.info.bg }]}>
-                <IconSymbol name="cash-multiple" size={32} color={COLORS.info.main} />
-                <ThemedText style={styles.summaryLabel}>Toplam Satis</ThemedText>
-                <ThemedText style={[styles.summaryValue, { color: COLORS.info.main }]}>
-                  ${stats.monthlyRevenue.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                </ThemedText>
-              </View>
-              <View style={[styles.summaryCard, { backgroundColor: COLORS.error.bg }]}>
-                <IconSymbol name="cash-minus" size={32} color={COLORS.error.main} />
-                <ThemedText style={styles.summaryLabel}>Toplam Gider</ThemedText>
-                <ThemedText style={[styles.summaryValue, { color: COLORS.error.main }]}>
-                  ${stats.monthlyExpenses.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                </ThemedText>
-              </View>
-            </View>
-
-            {/* Net Profit Card */}
-            <LinearGradient
-              colors={COLORS.gradients.success}
-              style={styles.profitCard}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <View style={styles.profitContent}>
-                <ThemedText style={styles.profitLabel}>Net Kar</ThemedText>
-                <ThemedText style={styles.profitValue}>
-                  ${stats.netProfit.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                </ThemedText>
-              </View>
-              <IconSymbol name="chart-areaspline" size={48} color="rgba(255,255,255,0.3)" />
-            </LinearGradient>
-
-            {/* Stats Grid */}
-            <View style={styles.statsGrid}>
-              <View style={styles.statItem}>
-                <ThemedText style={styles.statItemValue}>{stats.totalOrders}</ThemedText>
-                <ThemedText style={styles.statItemLabel}>Toplam Siparis</ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText style={styles.statItemValue}>
-                  ${stats.totalOrders > 0 ? (stats.monthlyRevenue / stats.totalOrders).toFixed(0) : '0'}
-                </ThemedText>
-                <ThemedText style={styles.statItemLabel}>Ort. Siparis</ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText style={styles.statItemValue}>
-                  {stats.totalOrders > 0 ? ((stats.deliveredOrders / stats.totalOrders) * 100).toFixed(0) : '0'}%
-                </ThemedText>
-                <ThemedText style={styles.statItemLabel}>Teslim Orani</ThemedText>
-              </View>
-              <View style={styles.statItem}>
-                <ThemedText style={styles.statItemValue}>
-                  {stats.totalOrders > 0 ? ((stats.netProfit / stats.monthlyRevenue) * 100).toFixed(0) : '0'}%
-                </ThemedText>
-                <ThemedText style={styles.statItemLabel}>Kar Marji</ThemedText>
-              </View>
-            </View>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+  ];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={[COLORS.primary.main]}
-          tintColor={COLORS.primary.main}
-        />
-      }
-    >
-      {/* Welcome Header */}
-      <Animated.View style={[
-        styles.welcomeSection,
-        { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
-      ]}>
-        <View style={styles.welcomeContent}>
-          <ThemedText style={styles.greeting}>{getGreeting()}</ThemedText>
-          <ThemedText style={styles.userName}>{userName}</ThemedText>
-          <View style={styles.dateContainer}>
-            <IconSymbol name="calendar-today" size={14} color={COLORS.light.text.tertiary} />
-            <ThemedText style={styles.dateText}>
-              {new Date().toLocaleDateString('tr-TR', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              })}
-            </ThemedText>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary.main} />
+        }
+      >
+        {/* Header Section */}
+        <Animated.View style={[styles.header, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.greetingSection}>
+            <ThemedText style={styles.greeting}>{getGreeting()},</ThemedText>
+            <ThemedText style={styles.userName}>{userName || 'Kullanıcı'}</ThemedText>
           </View>
-        </View>
-        <View style={styles.roleBadge}>
-          <LinearGradient
-            colors={COLORS.gradients.primary}
-            style={styles.roleBadgeGradient}
-          >
-            <IconSymbol name="shield-account" size={16} color="#fff" />
+          <View style={styles.roleTag}>
             <ThemedText style={styles.roleText}>{userRole}</ThemedText>
-          </LinearGradient>
-        </View>
-      </Animated.View>
+          </View>
+        </Animated.View>
 
-      {/* Status Cards */}
-      <View style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>Siparis Durumu</ThemedText>
-        <View style={styles.statusGrid}>
-          {statusCards.map((card, index) => renderStatCard(card, index))}
-        </View>
-      </View>
-
-      {/* Finance Cards */}
-      {canViewFinancials && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <ThemedText style={styles.sectionTitle}>Finansal Ozet</ThemedText>
-            {canViewReports && (
-              <TouchableOpacity onPress={() => setShowReports(true)}>
-                <ThemedText style={styles.seeAllText}>Detaylar</ThemedText>
+        {/* Stats Overview Card */}
+        <Animated.View style={[styles.overviewCard, { opacity: fadeAnim }]}>
+          <View style={styles.overviewHeader}>
+            <View>
+              <ThemedText style={styles.overviewLabel}>Toplam Sipariş</ThemedText>
+              <ThemedText style={styles.overviewValue}>{stats.totalOrders}</ThemedText>
+            </View>
+            {canViewFinancials && (
+              <TouchableOpacity
+                style={styles.financialButton}
+                onPress={() => setShowFinancials(true)}
+              >
+                <IconSymbol name="chart-line" size={18} color={COLORS.primary.accent} />
+                <ThemedText style={styles.financialButtonText}>Finansal</ThemedText>
               </TouchableOpacity>
             )}
           </View>
-          <View style={styles.financeGrid}>
-            {financeCards.map((card, index) => renderStatCard(card, index + 4, true))}
+
+          {/* Progress Bar */}
+          <View style={styles.progressSection}>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressSegment,
+                  {
+                    backgroundColor: COLORS.success.main,
+                    flex: stats.deliveredOrders || 0.1,
+                  }
+                ]}
+              />
+              <View
+                style={[
+                  styles.progressSegment,
+                  {
+                    backgroundColor: COLORS.warning.main,
+                    flex: stats.inTransferOrders || 0.1,
+                  }
+                ]}
+              />
+              <View
+                style={[
+                  styles.progressSegment,
+                  {
+                    backgroundColor: COLORS.info.main,
+                    flex: stats.pendingOrders || 0.1,
+                  }
+                ]}
+              />
+            </View>
+            <View style={styles.progressLegend}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.success.main }]} />
+                <ThemedText style={styles.legendText}>Teslim</ThemedText>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.warning.main }]} />
+                <ThemedText style={styles.legendText}>Transfer</ThemedText>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.info.main }]} />
+                <ThemedText style={styles.legendText}>Bekleyen</ThemedText>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Status Grid */}
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Sipariş Durumları</ThemedText>
+          <View style={styles.statusGrid}>
+            {statusCards.map((card, index) => (
+              <Animated.View
+                key={card.title}
+                style={[
+                  styles.statusCard,
+                  { opacity: fadeAnim }
+                ]}
+              >
+                <View style={[styles.statusIconContainer, { backgroundColor: card.bgColor }]}>
+                  <IconSymbol name={card.icon} size={20} color={card.color} />
+                </View>
+                <ThemedText style={styles.statusValue}>{card.value}</ThemedText>
+                <ThemedText style={styles.statusTitle}>{card.title}</ThemedText>
+              </Animated.View>
+            ))}
           </View>
         </View>
-      )}
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>Hizli Islemler</ThemedText>
-        <View style={styles.quickActionsContainer}>
-          {canCreateOrder && renderQuickAction(
-            'Yeni Siparis',
-            'Hizlica siparis olustur',
-            'plus-circle',
-            COLORS.gradients.primary,
-            () => onTabChange(1)
-          )}
-          {renderQuickAction(
-            'Siparisleri Gor',
-            'Tum siparisleri listele',
-            'format-list-bulleted',
-            COLORS.gradients.secondary,
-            () => onTabChange(canCreateOrder ? 2 : 1)
-          )}
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Hızlı İşlemler</ThemedText>
+          <View style={styles.actionsContainer}>
+            {quickActions.map((action, index) => (
+              <TouchableOpacity
+                key={action.title}
+                style={styles.actionCard}
+                onPress={action.onPress}
+                activeOpacity={0.7}
+              >
+                <View style={styles.actionIconContainer}>
+                  <IconSymbol name={action.icon} size={22} color={COLORS.light.text.primary} />
+                </View>
+                <View style={styles.actionContent}>
+                  <ThemedText style={styles.actionTitle}>{action.title}</ThemedText>
+                  <ThemedText style={styles.actionSubtitle}>{action.subtitle}</ThemedText>
+                </View>
+                <IconSymbol name="chevron-right" size={20} color={COLORS.light.text.tertiary} />
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </View>
 
-      {/* Bottom Padding for Navigation */}
-      <View style={{ height: 100 }} />
+        {/* Revenue Summary for Patron */}
+        {canViewFinancials && (
+          <View style={styles.section}>
+            <ThemedText style={styles.sectionTitle}>Bu Ay</ThemedText>
+            <View style={styles.revenueCard}>
+              <View style={styles.revenueRow}>
+                <View style={styles.revenueItem}>
+                  <ThemedText style={styles.revenueLabel}>Gelir</ThemedText>
+                  <ThemedText style={[styles.revenueValue, { color: COLORS.success.main }]}>
+                    {formatCurrency(stats.monthlyRevenue)}
+                  </ThemedText>
+                </View>
+                <View style={styles.revenueDivider} />
+                <View style={styles.revenueItem}>
+                  <ThemedText style={styles.revenueLabel}>Gider</ThemedText>
+                  <ThemedText style={[styles.revenueValue, { color: COLORS.error.main }]}>
+                    {formatCurrency(stats.monthlyExpenses)}
+                  </ThemedText>
+                </View>
+                <View style={styles.revenueDivider} />
+                <View style={styles.revenueItem}>
+                  <ThemedText style={styles.revenueLabel}>Net Kar</ThemedText>
+                  <ThemedText style={[styles.revenueValue, { color: COLORS.light.text.primary }]}>
+                    {formatCurrency(stats.netProfit)}
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
 
-      {renderReportsModal()}
-    </ScrollView>
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Financial Details Modal */}
+      <Modal
+        visible={showFinancials}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowFinancials(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowFinancials(false)}
+            >
+              <IconSymbol name="close" size={24} color={COLORS.light.text.primary} />
+            </TouchableOpacity>
+            <ThemedText style={styles.modalTitle}>Finansal Özet</ThemedText>
+            <View style={styles.modalHeaderSpacer} />
+          </View>
+
+          <ScrollView style={styles.modalContent} contentContainerStyle={styles.modalScrollContent}>
+            {/* Revenue Card */}
+            <View style={styles.financialCard}>
+              <View style={styles.financialCardHeader}>
+                <View style={[styles.financialIconContainer, { backgroundColor: COLORS.success.muted }]}>
+                  <IconSymbol name="trending-up" size={24} color={COLORS.success.main} />
+                </View>
+                <ThemedText style={styles.financialCardTitle}>Aylık Gelir</ThemedText>
+              </View>
+              <ThemedText style={[styles.financialCardValue, { color: COLORS.success.main }]}>
+                {formatCurrency(stats.monthlyRevenue)}
+              </ThemedText>
+            </View>
+
+            {/* Expense Card */}
+            <View style={styles.financialCard}>
+              <View style={styles.financialCardHeader}>
+                <View style={[styles.financialIconContainer, { backgroundColor: COLORS.error.muted }]}>
+                  <IconSymbol name="trending-down" size={24} color={COLORS.error.main} />
+                </View>
+                <ThemedText style={styles.financialCardTitle}>Aylık Gider</ThemedText>
+              </View>
+              <ThemedText style={[styles.financialCardValue, { color: COLORS.error.main }]}>
+                {formatCurrency(stats.monthlyExpenses)}
+              </ThemedText>
+            </View>
+
+            {/* Profit Card */}
+            <View style={[styles.financialCard, styles.profitCard]}>
+              <View style={styles.financialCardHeader}>
+                <View style={[styles.financialIconContainer, { backgroundColor: COLORS.light.surfaceSecondary }]}>
+                  <IconSymbol name="wallet-outline" size={24} color={COLORS.light.text.primary} />
+                </View>
+                <ThemedText style={styles.financialCardTitle}>Net Kar</ThemedText>
+              </View>
+              <ThemedText style={styles.profitValue}>
+                {formatCurrency(stats.netProfit)}
+              </ThemedText>
+              <View style={styles.profitMargin}>
+                <ThemedText style={styles.profitMarginLabel}>Kar Marjı</ThemedText>
+                <ThemedText style={styles.profitMarginValue}>
+                  {stats.monthlyRevenue > 0
+                    ? `${((stats.netProfit / stats.monthlyRevenue) * 100).toFixed(1)}%`
+                    : '0%'}
+                </ThemedText>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -499,289 +441,325 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.light.background,
   },
-  scrollContent: {
-    paddingTop: SPACING.base,
+  scrollView: {
+    flex: 1,
   },
-  welcomeSection: {
+  scrollContent: {
+    paddingTop: SPACING.md,
+  },
+
+  // Header
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: SPACING.base,
     marginBottom: SPACING.xl,
   },
-  welcomeContent: {
-    flex: 1,
-  },
+  greetingSection: {},
   greeting: {
-    fontSize: TYPOGRAPHY.fontSize.md,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.tertiary,
+  },
+  userName: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+    letterSpacing: -0.5,
+    marginTop: SPACING.xs,
+  },
+  roleTag: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+  },
+  roleText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.secondary,
+  },
+
+  // Overview Card
+  overviewCard: {
+    backgroundColor: COLORS.light.surface,
+    marginHorizontal: SPACING.base,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+    marginBottom: SPACING.xl,
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.lg,
+  },
+  overviewLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
     marginBottom: SPACING.xs,
   },
-  userName: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
+  overviewValue: {
+    fontSize: TYPOGRAPHY.fontSize['4xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
-    marginBottom: SPACING.sm,
+    letterSpacing: -1,
   },
-  dateContainer: {
+  financialButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  dateText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
-  },
-  roleBadge: {
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-  },
-  roleBadgeGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.light.surfaceSecondary,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
     gap: SPACING.xs,
   },
-  roleText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: '#FFFFFF',
-  },
-  section: {
-    marginBottom: SPACING.xl,
-    paddingHorizontal: SPACING.base,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.primary,
-    marginBottom: SPACING.md,
-  },
-  seeAllText: {
+  financialButtonText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
-    color: COLORS.primary.main,
+    color: COLORS.primary.accent,
   },
+
+  // Progress Section
+  progressSection: {},
+  progressBar: {
+    height: 8,
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.full,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+  },
+  progressSegment: {
+    height: '100%',
+  },
+  progressLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: RADIUS.full,
+  },
+  legendText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+  },
+
+  // Section
+  section: {
+    paddingHorizontal: SPACING.base,
+    marginBottom: SPACING.xl,
+  },
+  sectionTitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: SPACING.base,
+  },
+
+  // Status Grid
   statusGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.md,
   },
   statusCard: {
-    width: cardWidth,
+    width: (width - SPACING.base * 2 - SPACING.md) / 2,
+    backgroundColor: COLORS.light.surface,
     borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    ...SHADOWS.md,
-  },
-  financeGrid: {
-    gap: SPACING.md,
-  },
-  financeCard: {
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    ...SHADOWS.md,
-  },
-  cardTouchable: {
-    flex: 1,
-  },
-  cardGradient: {
     padding: SPACING.base,
-    minHeight: 120,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING.md,
-  },
-  cardIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  statusIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.base,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: SPACING.md,
   },
-  trendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: RADIUS.full,
-    gap: 2,
-  },
-  trendText: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: '#FFFFFF',
-  },
-  cardContent: {
-    marginTop: 'auto',
-  },
-  cardValue: {
+  statusValue: {
     fontSize: TYPOGRAPHY.fontSize['2xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: '#FFFFFF',
-    marginBottom: 4,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.xs,
   },
-  cardValueLarge: {
-    fontSize: TYPOGRAPHY.fontSize['3xl'],
-  },
-  cardTitle: {
+  statusTitle: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: 'rgba(255,255,255,0.8)',
+    color: COLORS.light.text.tertiary,
   },
-  quickActionsContainer: {
-    gap: SPACING.md,
+
+  // Actions
+  actionsContainer: {
+    gap: SPACING.sm,
   },
-  quickAction: {
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    ...SHADOWS.md,
-  },
-  quickActionGradient: {
+  actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
     padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
   },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.lg,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  actionIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.base,
+    backgroundColor: COLORS.light.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.md,
   },
-  quickActionText: {
+  actionContent: {
     flex: 1,
   },
-  quickActionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
+  actionTitle: {
+    fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: '#FFFFFF',
-    marginBottom: 2,
+    color: COLORS.light.text.primary,
   },
-  quickActionSubtitle: {
+  actionSubtitle: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: 'rgba(255,255,255,0.7)',
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
+
+  // Revenue Card
+  revenueCard: {
     backgroundColor: COLORS.light.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    maxHeight: '85%',
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
   },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: COLORS.light.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
+  revenueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  revenueItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  revenueLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginBottom: SPACING.xs,
+  },
+  revenueValue: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+  },
+  revenueDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: COLORS.light.divider,
+  },
+
+  // Modal
+  modalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.light.background,
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.base,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.light.border,
-  },
-  modalTitle: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.light.text.primary,
+    borderBottomColor: COLORS.light.divider,
   },
   modalCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.light.surfaceVariant,
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.light.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalBody: {
-    padding: SPACING.lg,
+  modalTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
   },
-  summaryRow: {
+  modalHeaderSpacer: {
+    width: 40,
+  },
+  modalContent: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: SPACING.base,
+    gap: SPACING.md,
+  },
+
+  // Financial Cards
+  financialCard: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  financialCardHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.md,
     marginBottom: SPACING.md,
   },
-  summaryCard: {
-    flex: 1,
-    padding: SPACING.base,
-    borderRadius: RADIUS.xl,
+  financialIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  summaryLabel: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
+  financialCardTitle: {
+    fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.secondary,
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.xs,
   },
-  summaryValue: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
+  financialCardValue: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
   },
   profitCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.lg,
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
-  },
-  profitContent: {
-    flex: 1,
-  },
-  profitLabel: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: SPACING.xs,
+    backgroundColor: COLORS.primary.main,
   },
   profitValue: {
     fontSize: TYPOGRAPHY.fontSize['3xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: '#FFFFFF',
+    color: COLORS.light.text.inverse,
   },
-  statsGrid: {
+  profitMargin: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: COLORS.light.surfaceVariant,
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-  },
-  statItem: {
-    width: '50%',
-    padding: SPACING.base,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 0.5,
-    borderColor: COLORS.light.border,
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
   },
-  statItemValue: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.light.text.primary,
-    marginBottom: SPACING.xs,
-  },
-  statItemLabel: {
+  profitMarginLabel: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  profitMarginValue: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.inverse,
   },
 });
