@@ -8,11 +8,13 @@ import {
   Animated,
   RefreshControl,
   StatusBar,
+  Platform,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ORDER_STATUS } from '../../../constants/Theme';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ORDER_STATUS, ANIMATIONS } from '../../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 const { width } = Dimensions.get('window');
@@ -26,6 +28,15 @@ interface OrderStats {
   inTransferOrders: number;
   cancelledOrders: number;
   pendingOrders: number;
+}
+
+interface RecentOrder {
+  id: number;
+  order_no: string;
+  customer_name: string;
+  date: string;
+  process: string;
+  products: string;
 }
 
 interface HomeScreenProps {
@@ -47,29 +58,53 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
     cancelledOrders: 0,
     pendingOrders: 0,
   });
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [showFinancials, setShowFinancials] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const cardAnims = useRef([...Array(4)].map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
     fetchOrderStats();
+    startAnimations();
+  }, []);
+
+  const startAnimations = () => {
+    // Main fade and slide
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 400,
+        duration: 500,
         useNativeDriver: true,
       }),
       Animated.spring(slideAnim, {
         toValue: 0,
-        tension: 50,
-        friction: 8,
+        ...ANIMATIONS.spring.default,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        ...ANIMATIONS.spring.gentle,
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+
+    // Staggered card animations
+    cardAnims.forEach((anim, index) => {
+      setTimeout(() => {
+        Animated.spring(anim, {
+          toValue: 1,
+          ...ANIMATIONS.spring.bouncy,
+          useNativeDriver: true,
+        }).start();
+      }, index * ANIMATIONS.stagger.fast);
+    });
+  };
 
   const fetchOrderStats = async () => {
     try {
@@ -102,6 +137,17 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
         }
       });
 
+      // Get recent orders (last 5)
+      const recent = orders.slice(0, 5).map((order: any) => ({
+        id: order.id,
+        order_no: order.order_no,
+        customer_name: order.customer_name,
+        date: order.date,
+        process: order.process,
+        products: order.products,
+      }));
+
+      setRecentOrders(recent);
       setStats({
         totalOrders,
         monthlyRevenue,
@@ -143,40 +189,58 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
 
   const canViewFinancials = userRole === 'Patron' || permissions.includes('finansal_goruntuleme');
 
+  const getStatusConfig = (process: string) => {
+    switch (process) {
+      case 'Teslim Edildi':
+        return ORDER_STATUS.delivered;
+      case 'Transfer Aşamasında':
+        return ORDER_STATUS.transfer;
+      case 'İptal Edildi':
+        return ORDER_STATUS.cancelled;
+      default:
+        return ORDER_STATUS.created;
+    }
+  };
+
   const statusCards = [
     {
       title: 'Bekleyen',
       value: stats.pendingOrders,
       color: COLORS.info.main,
+      lightColor: COLORS.info.light,
       bgColor: COLORS.info.muted,
+      gradient: COLORS.gradients.info,
       icon: 'clock-outline',
     },
     {
       title: 'Transferde',
       value: stats.inTransferOrders,
       color: COLORS.warning.main,
+      lightColor: COLORS.warning.light,
       bgColor: COLORS.warning.muted,
+      gradient: COLORS.gradients.warning,
       icon: 'truck-outline',
     },
     {
-      title: 'Teslim Edildi',
+      title: 'Teslim',
       value: stats.deliveredOrders,
       color: COLORS.success.main,
+      lightColor: COLORS.success.light,
       bgColor: COLORS.success.muted,
+      gradient: COLORS.gradients.success,
       icon: 'check-circle-outline',
     },
     {
       title: 'İptal',
       value: stats.cancelledOrders,
       color: COLORS.error.main,
+      lightColor: COLORS.error.light,
       bgColor: COLORS.error.muted,
+      gradient: COLORS.gradients.error,
       icon: 'close-circle-outline',
     },
   ];
 
-  // Tab indices depend on whether user can create orders
-  // If canCreateOrder: [Ana Sayfa(0), Siparis(1), Siparisler(2), Takvim(3), Ayarlar(4)]
-  // If !canCreateOrder: [Ana Sayfa(0), Siparisler(1), Takvim(2), Ayarlar(3)]
   const ordersTabIndex = canCreateOrder ? 2 : 1;
   const calendarTabIndex = canCreateOrder ? 3 : 2;
 
@@ -185,109 +249,137 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
       title: 'Yeni Sipariş',
       subtitle: 'Sipariş oluştur',
       icon: 'plus',
+      gradient: COLORS.gradients.primary,
       onPress: () => onTabChange(1),
     }] : []),
     {
       title: 'Siparişler',
-      subtitle: 'Tümünü gör',
+      subtitle: 'Tümünü görüntüle',
       icon: 'format-list-bulleted',
+      gradient: COLORS.gradients.purple,
       onPress: () => onTabChange(ordersTabIndex),
     },
     {
       title: 'Takvim',
-      subtitle: 'Planla',
+      subtitle: 'Planla ve takip et',
       icon: 'calendar-outline',
+      gradient: COLORS.gradients.cyan,
       onPress: () => onTabChange(calendarTabIndex),
     },
   ];
 
+  const calculateOrderTotal = (productsStr: string) => {
+    try {
+      const products = JSON.parse(productsStr);
+      return products.reduce((sum: number, p: any) => sum + (parseFloat(p.price) * parseInt(p.quantity || '0')), 0);
+    } catch {
+      return 0;
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  };
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.light.background} />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary.main} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary.accent}
+            colors={[COLORS.primary.accent]}
+          />
         }
       >
         {/* Header Section */}
-        <Animated.View style={[styles.header, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <Animated.View style={[
+          styles.header,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }, { scale: scaleAnim }]
+          }
+        ]}>
           <View style={styles.greetingSection}>
             <ThemedText style={styles.greeting}>{getGreeting()},</ThemedText>
             <ThemedText style={styles.userName}>{userName || 'Kullanıcı'}</ThemedText>
           </View>
-          <View style={styles.roleTag}>
-            <ThemedText style={styles.roleText}>{userRole}</ThemedText>
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.notificationButton}>
+              <IconSymbol name="bell-outline" size={22} color={COLORS.light.text.secondary} />
+              <View style={styles.notificationBadge} />
+            </TouchableOpacity>
+            <View style={styles.roleTag}>
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.roleTagGradient}
+              >
+                <ThemedText style={styles.roleText}>{userRole}</ThemedText>
+              </LinearGradient>
+            </View>
           </View>
         </Animated.View>
 
-        {/* Stats Overview Card */}
-        <Animated.View style={[styles.overviewCard, { opacity: fadeAnim }]}>
-          <View style={styles.overviewHeader}>
-            <View>
-              <ThemedText style={styles.overviewLabel}>Toplam Sipariş</ThemedText>
-              <ThemedText style={styles.overviewValue}>{stats.totalOrders}</ThemedText>
+        {/* Main Stats Card */}
+        <Animated.View style={[styles.mainStatsCard, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+          <LinearGradient
+            colors={COLORS.gradients.primary as [string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.mainStatsGradient}
+          >
+            <View style={styles.mainStatsHeader}>
+              <View>
+                <ThemedText style={styles.mainStatsLabel}>Toplam Sipariş</ThemedText>
+                <ThemedText style={styles.mainStatsValue}>{stats.totalOrders}</ThemedText>
+              </View>
+              {canViewFinancials && (
+                <TouchableOpacity
+                  style={styles.financialButton}
+                  onPress={() => setShowFinancials(true)}
+                >
+                  <IconSymbol name="chart-line" size={18} color="#fff" />
+                  <ThemedText style={styles.financialButtonText}>Finansal</ThemedText>
+                </TouchableOpacity>
+              )}
             </View>
-            {canViewFinancials && (
-              <TouchableOpacity
-                style={styles.financialButton}
-                onPress={() => setShowFinancials(true)}
-              >
-                <IconSymbol name="chart-line" size={18} color={COLORS.primary.accent} />
-                <ThemedText style={styles.financialButtonText}>Finansal</ThemedText>
-              </TouchableOpacity>
-            )}
-          </View>
 
-          {/* Progress Bar */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressSegment,
-                  {
-                    backgroundColor: COLORS.success.main,
-                    flex: stats.deliveredOrders || 0.1,
-                  }
-                ]}
-              />
-              <View
-                style={[
-                  styles.progressSegment,
-                  {
-                    backgroundColor: COLORS.warning.main,
-                    flex: stats.inTransferOrders || 0.1,
-                  }
-                ]}
-              />
-              <View
-                style={[
-                  styles.progressSegment,
-                  {
-                    backgroundColor: COLORS.info.main,
-                    flex: stats.pendingOrders || 0.1,
-                  }
-                ]}
-              />
-            </View>
-            <View style={styles.progressLegend}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.success.main }]} />
-                <ThemedText style={styles.legendText}>Teslim</ThemedText>
+            {/* Progress Section */}
+            <View style={styles.progressSection}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressSegment, { backgroundColor: COLORS.success.light, flex: stats.deliveredOrders || 0.1 }]} />
+                <View style={[styles.progressSegment, { backgroundColor: COLORS.warning.light, flex: stats.inTransferOrders || 0.1 }]} />
+                <View style={[styles.progressSegment, { backgroundColor: '#fff', opacity: 0.5, flex: stats.pendingOrders || 0.1 }]} />
               </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.warning.main }]} />
-                <ThemedText style={styles.legendText}>Transfer</ThemedText>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.info.main }]} />
-                <ThemedText style={styles.legendText}>Bekleyen</ThemedText>
+              <View style={styles.progressLegend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: COLORS.success.light }]} />
+                  <ThemedText style={styles.legendText}>Teslim</ThemedText>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: COLORS.warning.light }]} />
+                  <ThemedText style={styles.legendText}>Transfer</ThemedText>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: 'rgba(255,255,255,0.5)' }]} />
+                  <ThemedText style={styles.legendText}>Bekleyen</ThemedText>
+                </View>
               </View>
             </View>
-          </View>
+
+            {/* Decorative Elements */}
+            <View style={styles.decorCircle1} />
+            <View style={styles.decorCircle2} />
+          </LinearGradient>
         </Animated.View>
 
         {/* Status Grid */}
@@ -299,12 +391,25 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
                 key={card.title}
                 style={[
                   styles.statusCard,
-                  { opacity: fadeAnim }
+                  {
+                    opacity: cardAnims[index],
+                    transform: [{
+                      translateY: cardAnims[index].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0]
+                      })
+                    }]
+                  }
                 ]}
               >
-                <View style={[styles.statusIconContainer, { backgroundColor: card.bgColor }]}>
-                  <IconSymbol name={card.icon} size={20} color={card.color} />
-                </View>
+                <LinearGradient
+                  colors={card.gradient as [string, string]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.statusIconContainer}
+                >
+                  <IconSymbol name={card.icon} size={20} color="#fff" />
+                </LinearGradient>
                 <ThemedText style={styles.statusValue}>{card.value}</ThemedText>
                 <ThemedText style={styles.statusTitle}>{card.title}</ThemedText>
               </Animated.View>
@@ -315,48 +420,117 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
         {/* Quick Actions */}
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Hızlı İşlemler</ThemedText>
-          <View style={styles.actionsContainer}>
+          <View style={styles.actionsGrid}>
             {quickActions.map((action, index) => (
               <TouchableOpacity
                 key={action.title}
                 style={styles.actionCard}
                 onPress={action.onPress}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
               >
-                <View style={styles.actionIconContainer}>
-                  <IconSymbol name={action.icon} size={22} color={COLORS.light.text.primary} />
-                </View>
-                <View style={styles.actionContent}>
+                <LinearGradient
+                  colors={action.gradient as [string, string]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.actionGradient}
+                >
+                  <View style={styles.actionIconWrapper}>
+                    <IconSymbol name={action.icon} size={24} color="#fff" />
+                  </View>
                   <ThemedText style={styles.actionTitle}>{action.title}</ThemedText>
                   <ThemedText style={styles.actionSubtitle}>{action.subtitle}</ThemedText>
-                </View>
-                <IconSymbol name="chevron-right" size={20} color={COLORS.light.text.tertiary} />
+                  <View style={styles.actionArrow}>
+                    <IconSymbol name="arrow-right" size={18} color="rgba(255,255,255,0.7)" />
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
+        {/* Recent Orders */}
+        {recentOrders.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <ThemedText style={styles.sectionTitle}>Son Siparişler</ThemedText>
+              <TouchableOpacity
+                style={styles.viewAllButton}
+                onPress={() => onTabChange(ordersTabIndex)}
+              >
+                <ThemedText style={styles.viewAllText}>Tümü</ThemedText>
+                <IconSymbol name="chevron-right" size={16} color={COLORS.primary.accent} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.recentOrdersList}>
+              {recentOrders.map((order, index) => {
+                const statusConfig = getStatusConfig(order.process);
+                const total = calculateOrderTotal(order.products);
+                return (
+                  <TouchableOpacity
+                    key={order.id}
+                    style={[
+                      styles.recentOrderCard,
+                      index === recentOrders.length - 1 && styles.lastOrderCard
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => onTabChange(ordersTabIndex)}
+                  >
+                    <View style={[styles.orderStatusDot, { backgroundColor: statusConfig.color }]} />
+                    <View style={styles.orderInfo}>
+                      <ThemedText style={styles.orderCustomer}>{order.customer_name}</ThemedText>
+                      <ThemedText style={styles.orderMeta}>
+                        #{order.order_no} • {formatDate(order.date)}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.orderRight}>
+                      <ThemedText style={styles.orderTotal}>{formatCurrency(total)}</ThemedText>
+                      <View style={[styles.orderStatusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                        <ThemedText style={[styles.orderStatusText, { color: statusConfig.textColor }]}>
+                          {statusConfig.label}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Revenue Summary for Patron */}
         {canViewFinancials && (
           <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Bu Ay</ThemedText>
+            <ThemedText style={styles.sectionTitle}>Bu Ay Özet</ThemedText>
             <View style={styles.revenueCard}>
-              <View style={styles.revenueRow}>
-                <View style={styles.revenueItem}>
+              <View style={styles.revenueItem}>
+                <View style={[styles.revenueIconBg, { backgroundColor: COLORS.success.muted }]}>
+                  <IconSymbol name="trending-up" size={20} color={COLORS.success.main} />
+                </View>
+                <View style={styles.revenueContent}>
                   <ThemedText style={styles.revenueLabel}>Gelir</ThemedText>
                   <ThemedText style={[styles.revenueValue, { color: COLORS.success.main }]}>
                     {formatCurrency(stats.monthlyRevenue)}
                   </ThemedText>
                 </View>
-                <View style={styles.revenueDivider} />
-                <View style={styles.revenueItem}>
+              </View>
+              <View style={styles.revenueDivider} />
+              <View style={styles.revenueItem}>
+                <View style={[styles.revenueIconBg, { backgroundColor: COLORS.error.muted }]}>
+                  <IconSymbol name="trending-down" size={20} color={COLORS.error.main} />
+                </View>
+                <View style={styles.revenueContent}>
                   <ThemedText style={styles.revenueLabel}>Gider</ThemedText>
                   <ThemedText style={[styles.revenueValue, { color: COLORS.error.main }]}>
                     {formatCurrency(stats.monthlyExpenses)}
                   </ThemedText>
                 </View>
-                <View style={styles.revenueDivider} />
-                <View style={styles.revenueItem}>
+              </View>
+              <View style={styles.revenueDivider} />
+              <View style={styles.revenueItem}>
+                <View style={[styles.revenueIconBg, { backgroundColor: COLORS.primary.accent + '20' }]}>
+                  <IconSymbol name="wallet-outline" size={20} color={COLORS.primary.accent} />
+                </View>
+                <View style={styles.revenueContent}>
                   <ThemedText style={styles.revenueLabel}>Net Kar</ThemedText>
                   <ThemedText style={[styles.revenueValue, { color: COLORS.light.text.primary }]}>
                     {formatCurrency(stats.netProfit)}
@@ -392,49 +566,64 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
           <ScrollView style={styles.modalContent} contentContainerStyle={styles.modalScrollContent}>
             {/* Revenue Card */}
             <View style={styles.financialCard}>
-              <View style={styles.financialCardHeader}>
-                <View style={[styles.financialIconContainer, { backgroundColor: COLORS.success.muted }]}>
-                  <IconSymbol name="trending-up" size={24} color={COLORS.success.main} />
+              <LinearGradient
+                colors={COLORS.gradients.success as [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.financialCardGradient}
+              >
+                <View style={styles.financialCardIcon}>
+                  <IconSymbol name="trending-up" size={28} color="#fff" />
                 </View>
-                <ThemedText style={styles.financialCardTitle}>Aylık Gelir</ThemedText>
-              </View>
-              <ThemedText style={[styles.financialCardValue, { color: COLORS.success.main }]}>
-                {formatCurrency(stats.monthlyRevenue)}
-              </ThemedText>
+                <ThemedText style={styles.financialCardLabel}>Aylık Gelir</ThemedText>
+                <ThemedText style={styles.financialCardValue}>
+                  {formatCurrency(stats.monthlyRevenue)}
+                </ThemedText>
+              </LinearGradient>
             </View>
 
             {/* Expense Card */}
             <View style={styles.financialCard}>
-              <View style={styles.financialCardHeader}>
-                <View style={[styles.financialIconContainer, { backgroundColor: COLORS.error.muted }]}>
-                  <IconSymbol name="trending-down" size={24} color={COLORS.error.main} />
+              <LinearGradient
+                colors={COLORS.gradients.error as [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.financialCardGradient}
+              >
+                <View style={styles.financialCardIcon}>
+                  <IconSymbol name="trending-down" size={28} color="#fff" />
                 </View>
-                <ThemedText style={styles.financialCardTitle}>Aylık Gider</ThemedText>
-              </View>
-              <ThemedText style={[styles.financialCardValue, { color: COLORS.error.main }]}>
-                {formatCurrency(stats.monthlyExpenses)}
-              </ThemedText>
+                <ThemedText style={styles.financialCardLabel}>Aylık Gider</ThemedText>
+                <ThemedText style={styles.financialCardValue}>
+                  {formatCurrency(stats.monthlyExpenses)}
+                </ThemedText>
+              </LinearGradient>
             </View>
 
             {/* Profit Card */}
-            <View style={[styles.financialCard, styles.profitCard]}>
-              <View style={styles.financialCardHeader}>
-                <View style={[styles.financialIconContainer, { backgroundColor: COLORS.light.surfaceSecondary }]}>
-                  <IconSymbol name="wallet-outline" size={24} color={COLORS.light.text.primary} />
+            <View style={styles.financialCard}>
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.financialCardGradient}
+              >
+                <View style={styles.financialCardIcon}>
+                  <IconSymbol name="wallet-outline" size={28} color="#fff" />
                 </View>
-                <ThemedText style={styles.financialCardTitle}>Net Kar</ThemedText>
-              </View>
-              <ThemedText style={styles.profitValue}>
-                {formatCurrency(stats.netProfit)}
-              </ThemedText>
-              <View style={styles.profitMargin}>
-                <ThemedText style={styles.profitMarginLabel}>Kar Marjı</ThemedText>
-                <ThemedText style={styles.profitMarginValue}>
-                  {stats.monthlyRevenue > 0
-                    ? `${((stats.netProfit / stats.monthlyRevenue) * 100).toFixed(1)}%`
-                    : '0%'}
+                <ThemedText style={styles.financialCardLabel}>Net Kar</ThemedText>
+                <ThemedText style={styles.financialCardValue}>
+                  {formatCurrency(stats.netProfit)}
                 </ThemedText>
-              </View>
+                <View style={styles.profitMarginRow}>
+                  <ThemedText style={styles.profitMarginLabel}>Kar Marjı</ThemedText>
+                  <ThemedText style={styles.profitMarginValue}>
+                    {stats.monthlyRevenue > 0
+                      ? `${((stats.netProfit / stats.monthlyRevenue) * 100).toFixed(1)}%`
+                      : '0%'}
+                  </ThemedText>
+                </View>
+              </LinearGradient>
             </View>
           </ScrollView>
         </View>
@@ -467,57 +656,91 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.tertiary,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   userName: {
     fontSize: TYPOGRAPHY.fontSize['3xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
-    letterSpacing: -0.5,
+    letterSpacing: TYPOGRAPHY.letterSpacing.tight,
     marginTop: SPACING.xs,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.light.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.error.main,
+    borderWidth: 2,
+    borderColor: COLORS.light.surface,
+  },
   roleTag: {
-    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    ...SHADOWS.sm,
+  },
+  roleTagGradient: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
   },
   roleText: {
     fontSize: TYPOGRAPHY.fontSize.xs,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.secondary,
+    color: '#fff',
+    letterSpacing: TYPOGRAPHY.letterSpacing.wide,
   },
 
-  // Overview Card
-  overviewCard: {
-    backgroundColor: COLORS.light.surface,
+  // Main Stats Card
+  mainStatsCard: {
     marginHorizontal: SPACING.base,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
+    borderRadius: RADIUS['3xl'],
+    overflow: 'hidden',
     marginBottom: SPACING.xl,
+    ...SHADOWS.xl,
   },
-  overviewHeader: {
+  mainStatsGradient: {
+    padding: SPACING.xl,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  mainStatsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.xl,
   },
-  overviewLabel: {
+  mainStatsLabel: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
+    color: 'rgba(255,255,255,0.8)',
     marginBottom: SPACING.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
-  overviewValue: {
-    fontSize: TYPOGRAPHY.fontSize['4xl'],
+  mainStatsValue: {
+    fontSize: TYPOGRAPHY.fontSize['5xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.light.text.primary,
-    letterSpacing: -1,
+    color: '#fff',
+    letterSpacing: TYPOGRAPHY.letterSpacing.tight,
   },
   financialButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.light.surfaceSecondary,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.full,
@@ -525,15 +748,35 @@ const styles = StyleSheet.create({
   },
   financialButtonText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.medium,
-    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#fff',
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    bottom: -30,
+    right: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
 
   // Progress Section
-  progressSection: {},
+  progressSection: {
+    marginTop: SPACING.sm,
+  },
   progressBar: {
-    height: 8,
-    backgroundColor: COLORS.light.surfaceSecondary,
+    height: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: RADIUS.full,
     flexDirection: 'row',
     overflow: 'hidden',
@@ -559,7 +802,8 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.light.text.tertiary,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
 
   // Section
@@ -567,13 +811,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.base,
     marginBottom: SPACING.xl,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.base,
+  },
   sectionTitle: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.tertiary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: TYPOGRAPHY.letterSpacing.wider,
     marginBottom: SPACING.base,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.base,
+  },
+  viewAllText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.primary.accent,
   },
 
   // Status Grid
@@ -585,21 +846,20 @@ const styles = StyleSheet.create({
   statusCard: {
     width: (width - SPACING.base * 2 - SPACING.md) / 2,
     backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS.xl,
+    borderRadius: RADIUS['2xl'],
     padding: SPACING.base,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
+    ...SHADOWS.md,
   },
   statusIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.base,
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
   statusValue: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
     marginBottom: SPACING.xs,
@@ -607,73 +867,152 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
 
-  // Actions
-  actionsContainer: {
-    gap: SPACING.sm,
+  // Actions Grid
+  actionsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.md,
   },
   actionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.base,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
+    flex: 1,
+    borderRadius: RADIUS['2xl'],
+    overflow: 'hidden',
+    ...SHADOWS.lg,
   },
-  actionIconContainer: {
+  actionGradient: {
+    padding: SPACING.base,
+    minHeight: 140,
+    position: 'relative',
+  },
+  actionIconWrapper: {
     width: 44,
     height: 44,
-    borderRadius: RADIUS.base,
-    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.lg,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  actionContent: {
-    flex: 1,
+    marginBottom: SPACING.md,
   },
   actionTitle: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#fff',
+    marginBottom: SPACING.xs,
+  },
+  actionSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  actionArrow: {
+    position: 'absolute',
+    bottom: SPACING.base,
+    right: SPACING.base,
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Recent Orders
+  recentOrdersList: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS['2xl'],
+    overflow: 'hidden',
+    ...SHADOWS.md,
+  },
+  recentOrderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.divider,
+  },
+  lastOrderCard: {
+    borderBottomWidth: 0,
+  },
+  orderStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: SPACING.md,
+  },
+  orderInfo: {
+    flex: 1,
+  },
+  orderCustomer: {
     fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.primary,
   },
-  actionSubtitle: {
+  orderMeta: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
     marginTop: 2,
+  },
+  orderRight: {
+    alignItems: 'flex-end',
+  },
+  orderTotal: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.xs,
+  },
+  orderStatusBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
+  },
+  orderStatusText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
 
   // Revenue Card
   revenueCard: {
     backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
-  },
-  revenueRow: {
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING.base,
     flexDirection: 'row',
     alignItems: 'center',
+    ...SHADOWS.md,
   },
   revenueItem: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  revenueIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  revenueContent: {
+    flex: 1,
   },
   revenueLabel: {
     fontSize: TYPOGRAPHY.fontSize.xs,
     color: COLORS.light.text.tertiary,
-    marginBottom: SPACING.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   revenueValue: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
+    marginTop: 2,
   },
   revenueDivider: {
     width: 1,
     height: 40,
     backgroundColor: COLORS.light.divider,
+    marginHorizontal: SPACING.sm,
   },
 
   // Modal
@@ -700,7 +1039,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
   },
   modalHeaderSpacer: {
@@ -716,42 +1055,34 @@ const styles = StyleSheet.create({
 
   // Financial Cards
   financialCard: {
-    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS['2xl'],
+    overflow: 'hidden',
+    ...SHADOWS.lg,
+  },
+  financialCardGradient: {
+    padding: SPACING.xl,
+  },
+  financialCardIcon: {
+    width: 56,
+    height: 56,
     borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
-  },
-  financialCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  financialIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.lg,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: SPACING.base,
   },
-  financialCardTitle: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.light.text.secondary,
+  financialCardLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    marginBottom: SPACING.xs,
   },
   financialCardValue: {
-    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontSize: TYPOGRAPHY.fontSize['4xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#fff',
   },
-  profitCard: {
-    backgroundColor: COLORS.primary.main,
-  },
-  profitValue: {
-    fontSize: TYPOGRAPHY.fontSize['3xl'],
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.light.text.inverse,
-  },
-  profitMargin: {
+  profitMarginRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -762,11 +1093,12 @@ const styles = StyleSheet.create({
   },
   profitMarginLabel: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   profitMarginValue: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontSize: TYPOGRAPHY.fontSize.xl,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.light.text.inverse,
+    color: '#fff',
   },
 });

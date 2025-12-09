@@ -1,5 +1,5 @@
-// Premium Minimal Theme - Professional Design System
-import { Dimensions } from 'react-native';
+// Premium Modern Theme - Professional Design System
+import { Dimensions, Platform } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -12,135 +12,172 @@ export const SCREEN = {
   isLarge: width >= 414,
 };
 
-// Color Palette - Sophisticated Neutral Design
+// Color Palette - Modern & Vibrant Design
 export const COLORS = {
-  // Primary Brand Color - Single Accent
+  // Primary Brand Colors - Premium Blue Gradient
   primary: {
-    main: '#1A1A2E',      // Deep Navy
-    light: '#2D2D44',
-    dark: '#0F0F1A',
-    accent: '#4A6CF7',    // Modern Blue Accent
-    accentLight: '#6B8AFF',
-    accentDark: '#3A5AD9',
+    main: '#0F172A',      // Rich Dark Navy
+    light: '#1E293B',
+    dark: '#020617',
+    accent: '#3B82F6',    // Vibrant Blue
+    accentLight: '#60A5FA',
+    accentDark: '#2563EB',
+    gradient: ['#3B82F6', '#8B5CF6'], // Blue to Purple
+  },
+
+  // Secondary Accent Colors
+  secondary: {
+    purple: '#8B5CF6',
+    pink: '#EC4899',
+    cyan: '#06B6D4',
+    orange: '#F97316',
+    emerald: '#10B981',
   },
 
   // Neutral Grays - Sophisticated Scale
   neutral: {
     50: '#FAFAFA',
-    100: '#F5F5F5',
-    200: '#EEEEEE',
-    300: '#E0E0E0',
-    400: '#BDBDBD',
-    500: '#9E9E9E',
-    600: '#757575',
-    700: '#616161',
-    800: '#424242',
-    900: '#212121',
+    100: '#F4F4F5',
+    200: '#E4E4E7',
+    300: '#D4D4D8',
+    400: '#A1A1AA',
+    500: '#71717A',
+    600: '#52525B',
+    700: '#3F3F46',
+    800: '#27272A',
+    900: '#18181B',
+    950: '#09090B',
   },
 
-  // Status Colors - Muted & Professional
+  // Status Colors - Modern & Clean
   success: {
-    main: '#2E7D5A',
-    light: '#4CAF7D',
-    muted: '#E8F5EF',
-    text: '#1B5E3E',
+    main: '#10B981',
+    light: '#34D399',
+    lighter: '#6EE7B7',
+    muted: '#D1FAE5',
+    text: '#065F46',
+    gradient: ['#10B981', '#059669'],
   },
   warning: {
-    main: '#B8860B',
-    light: '#DAA520',
-    muted: '#FDF6E3',
-    text: '#8B6914',
+    main: '#F59E0B',
+    light: '#FBBF24',
+    lighter: '#FCD34D',
+    muted: '#FEF3C7',
+    text: '#92400E',
+    gradient: ['#F59E0B', '#D97706'],
   },
   error: {
-    main: '#C62828',
-    light: '#EF5350',
-    muted: '#FFEBEE',
-    text: '#B71C1C',
+    main: '#EF4444',
+    light: '#F87171',
+    lighter: '#FCA5A5',
+    muted: '#FEE2E2',
+    text: '#991B1B',
+    gradient: ['#EF4444', '#DC2626'],
   },
   info: {
-    main: '#1565C0',
-    light: '#42A5F5',
-    muted: '#E3F2FD',
-    text: '#0D47A1',
+    main: '#3B82F6',
+    light: '#60A5FA',
+    lighter: '#93C5FD',
+    muted: '#DBEAFE',
+    text: '#1E40AF',
+    gradient: ['#3B82F6', '#2563EB'],
   },
 
   // Light Theme
   light: {
-    background: '#FFFFFF',
-    backgroundSecondary: '#FAFAFA',
+    background: '#F8FAFC',
+    backgroundSecondary: '#F1F5F9',
     surface: '#FFFFFF',
     surfaceElevated: '#FFFFFF',
-    surfaceSecondary: '#F5F5F5',
-    border: '#E8E8E8',
-    borderLight: '#F0F0F0',
-    divider: '#EEEEEE',
+    surfaceSecondary: '#F1F5F9',
+    surfaceGlass: 'rgba(255, 255, 255, 0.8)',
+    border: '#E2E8F0',
+    borderLight: '#F1F5F9',
+    divider: '#E2E8F0',
     text: {
-      primary: '#1A1A1A',
-      secondary: '#666666',
-      tertiary: '#999999',
-      disabled: '#BDBDBD',
+      primary: '#0F172A',
+      secondary: '#475569',
+      tertiary: '#94A3B8',
+      disabled: '#CBD5E1',
       inverse: '#FFFFFF',
+      accent: '#3B82F6',
     },
     icon: {
-      primary: '#1A1A1A',
-      secondary: '#666666',
-      tertiary: '#999999',
+      primary: '#0F172A',
+      secondary: '#64748B',
+      tertiary: '#94A3B8',
     },
-    overlay: 'rgba(0, 0, 0, 0.5)',
-    overlayLight: 'rgba(0, 0, 0, 0.3)',
+    overlay: 'rgba(15, 23, 42, 0.6)',
+    overlayLight: 'rgba(15, 23, 42, 0.3)',
   },
 
   // Dark Theme
   dark: {
-    background: '#0A0A0F',
-    backgroundSecondary: '#12121A',
-    surface: '#1A1A24',
-    surfaceElevated: '#22222E',
-    surfaceSecondary: '#2A2A38',
-    border: '#2E2E3A',
-    borderLight: '#252530',
-    divider: '#2A2A35',
+    background: '#0F172A',
+    backgroundSecondary: '#1E293B',
+    surface: '#1E293B',
+    surfaceElevated: '#334155',
+    surfaceSecondary: '#334155',
+    surfaceGlass: 'rgba(30, 41, 59, 0.8)',
+    border: '#334155',
+    borderLight: '#475569',
+    divider: '#334155',
     text: {
-      primary: '#FAFAFA',
-      secondary: '#B0B0B0',
-      tertiary: '#707070',
-      disabled: '#505050',
-      inverse: '#1A1A1A',
+      primary: '#F8FAFC',
+      secondary: '#CBD5E1',
+      tertiary: '#94A3B8',
+      disabled: '#64748B',
+      inverse: '#0F172A',
+      accent: '#60A5FA',
     },
     icon: {
-      primary: '#FAFAFA',
-      secondary: '#B0B0B0',
-      tertiary: '#707070',
+      primary: '#F8FAFC',
+      secondary: '#CBD5E1',
+      tertiary: '#94A3B8',
     },
     overlay: 'rgba(0, 0, 0, 0.7)',
     overlayLight: 'rgba(0, 0, 0, 0.5)',
   },
 
-  // Gradient Presets - Subtle & Professional
+  // Gradient Presets - Modern & Eye-catching
   gradients: {
-    primary: ['#1A1A2E', '#2D2D44'],
-    accent: ['#4A6CF7', '#3A5AD9'],
-    subtle: ['#FAFAFA', '#F0F0F0'],
-    dark: ['#1A1A24', '#0A0A0F'],
-    glass: ['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)'],
-    shimmer: ['#F5F5F5', '#EEEEEE', '#F5F5F5'],
+    primary: ['#3B82F6', '#8B5CF6'],
+    accent: ['#EC4899', '#F97316'],
+    success: ['#10B981', '#059669'],
+    warning: ['#F59E0B', '#D97706'],
+    error: ['#EF4444', '#DC2626'],
+    info: ['#3B82F6', '#0EA5E9'],
+    purple: ['#8B5CF6', '#A855F7'],
+    pink: ['#EC4899', '#F472B6'],
+    cyan: ['#06B6D4', '#22D3EE'],
+    dark: ['#1E293B', '#0F172A'],
+    darkReverse: ['#0F172A', '#1E293B'],
+    glass: ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.75)'],
+    glassBlue: ['rgba(59, 130, 246, 0.1)', 'rgba(139, 92, 246, 0.1)'],
+    shimmer: ['#F1F5F9', '#E2E8F0', '#F1F5F9'],
+    sunset: ['#F97316', '#EC4899'],
+    ocean: ['#0EA5E9', '#6366F1'],
+    forest: ['#10B981', '#06B6D4'],
+    midnight: ['#1E293B', '#0F172A', '#020617'],
+    premium: ['#3B82F6', '#8B5CF6', '#EC4899'],
   },
 
   // Semantic Colors
   semantic: {
-    link: '#4A6CF7',
-    focus: '#4A6CF7',
-    selection: 'rgba(74, 108, 247, 0.1)',
+    link: '#3B82F6',
+    focus: '#3B82F6',
+    selection: 'rgba(59, 130, 246, 0.15)',
+    highlight: 'rgba(59, 130, 246, 0.1)',
   },
 };
 
 // Typography - Clean & Modern
 export const TYPOGRAPHY = {
   fontFamily: {
-    regular: 'System',
-    medium: 'System',
-    semiBold: 'System',
-    bold: 'System',
+    regular: Platform.OS === 'ios' ? 'SF Pro Text' : 'System',
+    medium: Platform.OS === 'ios' ? 'SF Pro Text' : 'System',
+    semiBold: Platform.OS === 'ios' ? 'SF Pro Text' : 'System',
+    bold: Platform.OS === 'ios' ? 'SF Pro Display' : 'System',
   },
   fontSize: {
     '2xs': 10,
@@ -154,12 +191,13 @@ export const TYPOGRAPHY = {
     '3xl': 26,
     '4xl': 32,
     '5xl': 40,
-    display: 48,
+    '6xl': 48,
+    display: 56,
   },
   lineHeight: {
     none: 1,
-    tight: 1.2,
-    snug: 1.35,
+    tight: 1.15,
+    snug: 1.3,
     normal: 1.5,
     relaxed: 1.625,
     loose: 2,
@@ -169,18 +207,19 @@ export const TYPOGRAPHY = {
     medium: '500' as const,
     semiBold: '600' as const,
     bold: '700' as const,
+    extraBold: '800' as const,
   },
   letterSpacing: {
-    tighter: -0.5,
-    tight: -0.25,
+    tighter: -0.8,
+    tight: -0.4,
     normal: 0,
-    wide: 0.25,
-    wider: 0.5,
-    widest: 1,
+    wide: 0.4,
+    wider: 0.8,
+    widest: 1.6,
   },
 };
 
-// Spacing System - 8pt Grid
+// Spacing System - 4pt Grid
 export const SPACING = {
   '2xs': 2,
   xs: 4,
@@ -195,6 +234,7 @@ export const SPACING = {
   '5xl': 56,
   '6xl': 64,
   '7xl': 80,
+  '8xl': 96,
 };
 
 // Border Radius - Consistent Curves
@@ -208,10 +248,11 @@ export const RADIUS = {
   xl: 16,
   '2xl': 20,
   '3xl': 24,
+  '4xl': 28,
   full: 9999,
 };
 
-// Shadows - Subtle & Layered
+// Shadows - Modern & Layered
 export const SHADOWS = {
   none: {
     shadowColor: 'transparent',
@@ -223,51 +264,65 @@ export const SHADOWS = {
   xs: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
   },
   sm: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 2,
   },
   md: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   lg: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
   },
   xl: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
     elevation: 8,
+  },
+  '2xl': {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 32,
+    elevation: 12,
   },
   inner: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 0,
   },
-  colored: (color: string, opacity: number = 0.25) => ({
+  colored: (color: string, opacity: number = 0.3) => ({
     shadowColor: color,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: opacity,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowRadius: 16,
+    elevation: 6,
+  }),
+  glow: (color: string, intensity: number = 0.4) => ({
+    shadowColor: color,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: intensity,
+    shadowRadius: 20,
+    elevation: 8,
   }),
 };
 
@@ -279,18 +334,28 @@ export const ANIMATIONS = {
     normal: 300,
     slow: 400,
     slower: 500,
+    slowest: 600,
   },
   spring: {
     gentle: { tension: 40, friction: 7 },
     default: { tension: 50, friction: 8 },
     bouncy: { tension: 60, friction: 6 },
     stiff: { tension: 80, friction: 10 },
+    snappy: { tension: 120, friction: 12 },
+    responsive: { tension: 180, friction: 20, mass: 0.5 },
   },
   easing: {
     ease: [0.25, 0.1, 0.25, 1],
     easeIn: [0.42, 0, 1, 1],
     easeOut: [0, 0, 0.58, 1],
     easeInOut: [0.42, 0, 0.58, 1],
+    bounce: [0.68, -0.55, 0.265, 1.55],
+  },
+  // Staggered animation delays
+  stagger: {
+    fast: 50,
+    normal: 100,
+    slow: 150,
   },
 };
 
@@ -309,93 +374,130 @@ export const Z_INDEX = {
   max: 9999,
 };
 
-// Order Status - Professional Style
+// Order Status - Modern Style
 export const ORDER_STATUS = {
   created: {
     key: 'Sipariş Oluşturuldu',
     label: 'Beklemede',
     color: COLORS.info.main,
+    lightColor: COLORS.info.light,
     bgColor: COLORS.info.muted,
     textColor: COLORS.info.text,
+    gradient: COLORS.info.gradient,
     icon: 'clock-outline',
   },
   transfer: {
     key: 'Transfer Aşamasında',
     label: 'Transferde',
     color: COLORS.warning.main,
+    lightColor: COLORS.warning.light,
     bgColor: COLORS.warning.muted,
     textColor: COLORS.warning.text,
+    gradient: COLORS.warning.gradient,
     icon: 'truck-outline',
   },
   delivered: {
     key: 'Teslim Edildi',
     label: 'Teslim Edildi',
     color: COLORS.success.main,
+    lightColor: COLORS.success.light,
     bgColor: COLORS.success.muted,
     textColor: COLORS.success.text,
+    gradient: COLORS.success.gradient,
     icon: 'check-circle-outline',
   },
   cancelled: {
     key: 'İptal Edildi',
-    label: 'Iptal',
+    label: 'İptal',
     color: COLORS.error.main,
+    lightColor: COLORS.error.light,
     bgColor: COLORS.error.muted,
     textColor: COLORS.error.text,
+    gradient: COLORS.error.gradient,
     icon: 'close-circle-outline',
   },
 };
 
-// Component Styles
+// Component Styles - Modern Design
 export const COMPONENTS = {
   // Card Styles
   card: {
     default: {
       backgroundColor: COLORS.light.surface,
-      borderRadius: RADIUS.xl,
+      borderRadius: RADIUS['2xl'],
       padding: SPACING.base,
       borderWidth: 1,
       borderColor: COLORS.light.border,
     },
     elevated: {
       backgroundColor: COLORS.light.surface,
-      borderRadius: RADIUS.xl,
+      borderRadius: RADIUS['2xl'],
       padding: SPACING.base,
+      ...SHADOWS.lg,
+    },
+    glass: {
+      backgroundColor: COLORS.light.surfaceGlass,
+      borderRadius: RADIUS['2xl'],
+      padding: SPACING.base,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.3)',
       ...SHADOWS.md,
     },
     outlined: {
       backgroundColor: 'transparent',
-      borderRadius: RADIUS.xl,
+      borderRadius: RADIUS['2xl'],
       padding: SPACING.base,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: COLORS.light.border,
+    },
+    gradient: {
+      borderRadius: RADIUS['2xl'],
+      padding: SPACING.base,
+      overflow: 'hidden' as const,
     },
   },
 
   // Button Styles
   button: {
     primary: {
-      backgroundColor: COLORS.primary.main,
-      borderRadius: RADIUS.base,
+      backgroundColor: COLORS.primary.accent,
+      borderRadius: RADIUS.lg,
       paddingVertical: SPACING.md,
       paddingHorizontal: SPACING.lg,
+      ...SHADOWS.colored(COLORS.primary.accent, 0.3),
     },
     secondary: {
       backgroundColor: COLORS.light.surfaceSecondary,
-      borderRadius: RADIUS.base,
+      borderRadius: RADIUS.lg,
       paddingVertical: SPACING.md,
       paddingHorizontal: SPACING.lg,
     },
     accent: {
-      backgroundColor: COLORS.primary.accent,
-      borderRadius: RADIUS.base,
+      backgroundColor: COLORS.secondary.purple,
+      borderRadius: RADIUS.lg,
       paddingVertical: SPACING.md,
       paddingHorizontal: SPACING.lg,
+      ...SHADOWS.colored(COLORS.secondary.purple, 0.3),
     },
     ghost: {
       backgroundColor: 'transparent',
-      borderRadius: RADIUS.base,
+      borderRadius: RADIUS.lg,
       paddingVertical: SPACING.md,
       paddingHorizontal: SPACING.lg,
+    },
+    outline: {
+      backgroundColor: 'transparent',
+      borderRadius: RADIUS.lg,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.lg,
+      borderWidth: 1.5,
+      borderColor: COLORS.primary.accent,
+    },
+    gradient: {
+      borderRadius: RADIUS.lg,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.lg,
+      overflow: 'hidden' as const,
     },
   },
 
@@ -403,21 +505,31 @@ export const COMPONENTS = {
   input: {
     default: {
       backgroundColor: COLORS.light.surfaceSecondary,
-      borderRadius: RADIUS.base,
+      borderRadius: RADIUS.lg,
       paddingVertical: SPACING.md,
       paddingHorizontal: SPACING.base,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: COLORS.light.border,
       fontSize: TYPOGRAPHY.fontSize.base,
       color: COLORS.light.text.primary,
     },
     focused: {
       borderColor: COLORS.primary.accent,
-      borderWidth: 1.5,
+      borderWidth: 2,
+      backgroundColor: COLORS.light.surface,
     },
     error: {
       borderColor: COLORS.error.main,
-      borderWidth: 1.5,
+      borderWidth: 2,
+    },
+    filled: {
+      backgroundColor: COLORS.light.surfaceSecondary,
+      borderRadius: RADIUS.lg,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.base,
+      borderWidth: 0,
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: COLORS.light.text.primary,
     },
   },
 
@@ -426,7 +538,7 @@ export const COMPONENTS = {
     default: {
       paddingHorizontal: SPACING.sm,
       paddingVertical: SPACING.xs,
-      borderRadius: RADIUS.sm,
+      borderRadius: RADIUS.full,
       backgroundColor: COLORS.light.surfaceSecondary,
     },
     success: {
@@ -441,18 +553,131 @@ export const COMPONENTS = {
     info: {
       backgroundColor: COLORS.info.muted,
     },
+    gradient: {
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: SPACING.xs,
+      borderRadius: RADIUS.full,
+      overflow: 'hidden' as const,
+    },
+  },
+
+  // Tab Styles
+  tab: {
+    default: {
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.base,
+      borderRadius: RADIUS.full,
+    },
+    active: {
+      backgroundColor: COLORS.primary.accent,
+    },
+    inactive: {
+      backgroundColor: 'transparent',
+    },
+  },
+
+  // List Item Styles
+  listItem: {
+    default: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.base,
+      backgroundColor: COLORS.light.surface,
+      borderRadius: RADIUS.xl,
+    },
+    bordered: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.base,
+      backgroundColor: COLORS.light.surface,
+      borderRadius: RADIUS.xl,
+      borderWidth: 1,
+      borderColor: COLORS.light.border,
+    },
+  },
+
+  // Avatar Styles
+  avatar: {
+    xs: { width: 24, height: 24, borderRadius: 12 },
+    sm: { width: 32, height: 32, borderRadius: 16 },
+    md: { width: 40, height: 40, borderRadius: 20 },
+    lg: { width: 48, height: 48, borderRadius: 24 },
+    xl: { width: 64, height: 64, borderRadius: 32 },
+    '2xl': { width: 80, height: 80, borderRadius: 40 },
+  },
+
+  // Icon Button
+  iconButton: {
+    sm: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+    },
+    md: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+    },
+    lg: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+    },
   },
 };
 
 // Layout Constants
 export const LAYOUT = {
   screenPadding: SPACING.base,
+  screenPaddingLarge: SPACING.xl,
   cardGap: SPACING.md,
   sectionGap: SPACING.xl,
   headerHeight: 56,
-  tabBarHeight: 64,
+  headerHeightLarge: 64,
+  tabBarHeight: 70,
   bottomSafeArea: 34,
+  maxContentWidth: 480,
 };
+
+// Glassmorphism Effects
+export const GLASS = {
+  light: {
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+    backdropFilter: 'blur(20px)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  dark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.75)',
+    backdropFilter: 'blur(20px)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  accent: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backdropFilter: 'blur(20px)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.2)',
+  },
+};
+
+// Chart Colors
+export const CHART_COLORS = [
+  COLORS.primary.accent,
+  COLORS.secondary.purple,
+  COLORS.secondary.pink,
+  COLORS.secondary.cyan,
+  COLORS.secondary.orange,
+  COLORS.secondary.emerald,
+];
 
 export default {
   COLORS,
@@ -466,4 +691,6 @@ export default {
   COMPONENTS,
   LAYOUT,
   SCREEN,
+  GLASS,
+  CHART_COLORS,
 };
