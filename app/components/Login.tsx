@@ -10,14 +10,14 @@ import {
   Platform,
   Dimensions,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 import ThemedText from './ThemedText';
 import IconSymbol from './ui/IconSymbol';
 import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 
@@ -29,6 +29,7 @@ export default function Login() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const [loginData, setLoginData] = useState({
     email: '',
@@ -45,29 +46,22 @@ export default function Login() {
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const logoScale = useRef(new Animated.Value(0.8)).current;
-  const logoRotate = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const logoScale = useRef(new Animated.Value(0.9)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
-  const buttonScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     // Initial animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 600,
         useNativeDriver: true,
       }),
       Animated.spring(logoScale, {
         toValue: 1,
         tension: 50,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-      Animated.timing(logoRotate, {
-        toValue: 1,
-        duration: 1200,
+        friction: 8,
         useNativeDriver: true,
       }),
     ]).start();
@@ -77,7 +71,7 @@ export default function Login() {
       Animated.parallel([
         Animated.timing(formOpacity, {
           toValue: 1,
-          duration: 500,
+          duration: 400,
           useNativeDriver: true,
         }),
         Animated.spring(slideAnim, {
@@ -87,41 +81,22 @@ export default function Login() {
           useNativeDriver: true,
         }),
       ]).start();
-    }, 300);
+    }, 200);
   }, []);
-
-  const spin = logoRotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg']
-  });
 
   const animateFormSwitch = () => {
     Animated.sequence([
       Animated.timing(formOpacity, {
         toValue: 0,
-        duration: 150,
+        duration: 100,
         useNativeDriver: true,
       }),
       Animated.timing(formOpacity, {
         toValue: 1,
-        duration: 150,
+        duration: 100,
         useNativeDriver: true,
       }),
     ]).start();
-  };
-
-  const handleButtonPressIn = () => {
-    Animated.spring(buttonScale, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleButtonPressOut = () => {
-    Animated.spring(buttonScale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
   };
 
   const handleLogin = async () => {
@@ -230,13 +205,13 @@ export default function Login() {
           <IconSymbol
             name={icon}
             size={20}
-            color={isFocused ? COLORS.primary.main : COLORS.light.text.tertiary}
+            color={isFocused ? COLORS.primary.accent : COLORS.neutral[400]}
           />
         </View>
         <TextInput
           placeholder={placeholder}
           style={styles.input}
-          placeholderTextColor={COLORS.light.text.tertiary}
+          placeholderTextColor={COLORS.neutral[400]}
           value={value}
           onChangeText={onChangeText}
           onFocus={() => setFocusedInput(inputKey)}
@@ -253,7 +228,7 @@ export default function Login() {
             <IconSymbol
               name={options.isVisible ? 'eye-off' : 'eye'}
               size={20}
-              color={COLORS.light.text.tertiary}
+              color={COLORS.neutral[400]}
             />
           </TouchableOpacity>
         )}
@@ -263,185 +238,164 @@ export default function Login() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary.main} />
 
-      {/* Gradient Background */}
-      <LinearGradient
-        colors={['#0F172A', '#1E293B', '#334155']}
-        style={styles.gradientBackground}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-
-      {/* Decorative Elements */}
-      <View style={styles.decorativeCircle1} />
-      <View style={styles.decorativeCircle2} />
-      <View style={styles.decorativeCircle3} />
+      {/* Clean Dark Background */}
+      <View style={styles.background}>
+        <View style={styles.backgroundTop} />
+        <View style={styles.backgroundBottom} />
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        {/* Logo Section */}
-        <Animated.View style={[
-          styles.logoSection,
-          {
-            opacity: fadeAnim,
-            transform: [{ scale: logoScale }]
-          }
-        ]}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Logo Section */}
           <Animated.View style={[
-            styles.logoContainer,
-            { transform: [{ rotate: spin }] }
+            styles.logoSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: logoScale }]
+            }
           ]}>
-            <LinearGradient
-              colors={[COLORS.primary.main, COLORS.primary.dark]}
-              style={styles.logoGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
+            <View style={styles.logoContainer}>
               <Image
                 source={require('../../assets/images/aicologo.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
-            </LinearGradient>
+            </View>
+
+            <ThemedText style={styles.brandName}>Koyuncu Hali</ThemedText>
+            <ThemedText style={styles.brandTagline}>Siparis Takip Sistemi</ThemedText>
           </Animated.View>
 
-          <ThemedText style={styles.brandName}>Koyuncu Hali</ThemedText>
-          <ThemedText style={styles.brandTagline}>Siparis Takip Sistemi</ThemedText>
-        </Animated.View>
-
-        {/* Form Card */}
-        <Animated.View style={[
-          styles.formCard,
-          {
-            opacity: formOpacity,
-            transform: [{ translateY: slideAnim }]
-          }
-        ]}>
-          <BlurView intensity={20} tint="light" style={styles.blurContainer}>
-            <View style={styles.formInner}>
-              {/* Tab Switcher */}
-              <View style={styles.tabContainer}>
-                <TouchableOpacity
-                  style={[styles.tab, isLogin && styles.tabActive]}
-                  onPress={() => { if (!isLogin) toggleMode(); }}
-                >
-                  <ThemedText style={[styles.tabText, isLogin && styles.tabTextActive]}>
-                    Giris Yap
-                  </ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.tab, !isLogin && styles.tabActive]}
-                  onPress={() => { if (isLogin) toggleMode(); }}
-                >
-                  <ThemedText style={[styles.tabText, !isLogin && styles.tabTextActive]}>
-                    Kayit Ol
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-
-              {/* Form Fields */}
-              <View style={styles.formFields}>
-                {isLogin ? (
-                  <>
-                    {renderInput('email', 'E-posta adresi', loginData.email,
-                      (text) => setLoginData({...loginData, email: text}), 'login-email',
-                      { keyboardType: 'email-address', autoCapitalize: 'none' }
-                    )}
-                    {renderInput('lock', 'Sifre', loginData.sifre,
-                      (text) => setLoginData({...loginData, sifre: text}), 'login-password',
-                      {
-                        secureTextEntry: true,
-                        showToggle: true,
-                        isVisible: showPassword,
-                        onToggleVisibility: () => setShowPassword(!showPassword)
-                      }
-                    )}
-
-                    <TouchableOpacity style={styles.forgotPassword}>
-                      <ThemedText style={styles.forgotPasswordText}>Sifremi Unuttum</ThemedText>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    {renderInput('account', 'Ad Soyad', formData.Ad_Soyad,
-                      (text) => setFormData({...formData, Ad_Soyad: text}), 'reg-name'
-                    )}
-                    {renderInput('email', 'E-posta adresi', formData.email,
-                      (text) => setFormData({...formData, email: text}), 'reg-email',
-                      { keyboardType: 'email-address', autoCapitalize: 'none' }
-                    )}
-                    {renderInput('phone', 'Telefon', formData.telefon,
-                      (text) => setFormData({...formData, telefon: text}), 'reg-phone',
-                      { keyboardType: 'phone-pad' }
-                    )}
-                    {renderInput('lock', 'Sifre', formData.sifre,
-                      (text) => setFormData({...formData, sifre: text}), 'reg-password',
-                      {
-                        secureTextEntry: true,
-                        showToggle: true,
-                        isVisible: showPassword,
-                        onToggleVisibility: () => setShowPassword(!showPassword)
-                      }
-                    )}
-                    {renderInput('lock-check', 'Sifre Tekrar', formData.sifre_tekrar,
-                      (text) => setFormData({...formData, sifre_tekrar: text}), 'reg-confirm',
-                      {
-                        secureTextEntry: true,
-                        showToggle: true,
-                        isVisible: showConfirmPassword,
-                        onToggleVisibility: () => setShowConfirmPassword(!showConfirmPassword)
-                      }
-                    )}
-                  </>
-                )}
-              </View>
-
-              {/* Submit Button */}
-              <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-                <TouchableOpacity
-                  style={styles.submitButton}
-                  onPress={isLogin ? handleLogin : handleRegister}
-                  onPressIn={handleButtonPressIn}
-                  onPressOut={handleButtonPressOut}
-                  disabled={isLoading}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient
-                    colors={COLORS.gradients.primary}
-                    style={styles.submitButtonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    {isLoading ? (
-                      <View style={styles.loadingContainer}>
-                        <View style={styles.loadingDot} />
-                        <View style={[styles.loadingDot, styles.loadingDot2]} />
-                        <View style={[styles.loadingDot, styles.loadingDot3]} />
-                      </View>
-                    ) : (
-                      <>
-                        <ThemedText style={styles.submitButtonText}>
-                          {isLogin ? 'Giris Yap' : 'Kayit Ol'}
-                        </ThemedText>
-                        <IconSymbol name="arrow-right" size={20} color="#fff" />
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </Animated.View>
+          {/* Form Card */}
+          <Animated.View style={[
+            styles.formCard,
+            {
+              opacity: formOpacity,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}>
+            {/* Tab Switcher */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity
+                style={[styles.tab, isLogin && styles.tabActive]}
+                onPress={() => { if (!isLogin) toggleMode(); }}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={[styles.tabText, isLogin && styles.tabTextActive]}>
+                  Giris Yap
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, !isLogin && styles.tabActive]}
+                onPress={() => { if (isLogin) toggleMode(); }}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={[styles.tabText, !isLogin && styles.tabTextActive]}>
+                  Kayit Ol
+                </ThemedText>
+              </TouchableOpacity>
             </View>
-          </BlurView>
-        </Animated.View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <ThemedText style={styles.footerText}>2025 Koyuncu Hali</ThemedText>
-          <View style={styles.footerDivider} />
-          <ThemedText style={styles.footerCredit}>AICO SOFTWARE</ThemedText>
-        </View>
+            {/* Form Fields */}
+            <View style={styles.formFields}>
+              {isLogin ? (
+                <>
+                  {renderInput('email', 'E-posta adresi', loginData.email,
+                    (text) => setLoginData({...loginData, email: text}), 'login-email',
+                    { keyboardType: 'email-address', autoCapitalize: 'none' }
+                  )}
+                  {renderInput('lock', 'Sifre', loginData.sifre,
+                    (text) => setLoginData({...loginData, sifre: text}), 'login-password',
+                    {
+                      secureTextEntry: true,
+                      showToggle: true,
+                      isVisible: showPassword,
+                      onToggleVisibility: () => setShowPassword(!showPassword)
+                    }
+                  )}
+
+                  <TouchableOpacity style={styles.forgotPassword}>
+                    <ThemedText style={styles.forgotPasswordText}>Sifremi Unuttum</ThemedText>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  {renderInput('account', 'Ad Soyad', formData.Ad_Soyad,
+                    (text) => setFormData({...formData, Ad_Soyad: text}), 'reg-name'
+                  )}
+                  {renderInput('email', 'E-posta adresi', formData.email,
+                    (text) => setFormData({...formData, email: text}), 'reg-email',
+                    { keyboardType: 'email-address', autoCapitalize: 'none' }
+                  )}
+                  {renderInput('phone', 'Telefon', formData.telefon,
+                    (text) => setFormData({...formData, telefon: text}), 'reg-phone',
+                    { keyboardType: 'phone-pad' }
+                  )}
+                  {renderInput('lock', 'Sifre', formData.sifre,
+                    (text) => setFormData({...formData, sifre: text}), 'reg-password',
+                    {
+                      secureTextEntry: true,
+                      showToggle: true,
+                      isVisible: showPassword,
+                      onToggleVisibility: () => setShowPassword(!showPassword)
+                    }
+                  )}
+                  {renderInput('lock-check', 'Sifre Tekrar', formData.sifre_tekrar,
+                    (text) => setFormData({...formData, sifre_tekrar: text}), 'reg-confirm',
+                    {
+                      secureTextEntry: true,
+                      showToggle: true,
+                      isVisible: showConfirmPassword,
+                      onToggleVisibility: () => setShowConfirmPassword(!showConfirmPassword)
+                    }
+                  )}
+                </>
+              )}
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+              onPress={isLogin ? handleLogin : handleRegister}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <View style={styles.loadingContainer}>
+                  <View style={styles.loadingDot} />
+                  <View style={[styles.loadingDot, styles.loadingDot2]} />
+                  <View style={[styles.loadingDot, styles.loadingDot3]} />
+                </View>
+              ) : (
+                <>
+                  <ThemedText style={styles.submitButtonText}>
+                    {isLogin ? 'Giris Yap' : 'Kayit Ol'}
+                  </ThemedText>
+                  <IconSymbol name="arrow-right" size={20} color="#fff" />
+                </>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <ThemedText style={styles.footerText}>2025 Koyuncu Hali</ThemedText>
+            <View style={styles.footerDivider} />
+            <ThemedText style={styles.footerCredit}>AICO SOFTWARE</ThemedText>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -450,96 +404,70 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.dark.background,
+    backgroundColor: COLORS.primary.main,
   },
-  gradientBackground: {
+  background: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
   },
-  decorativeCircle1: {
-    position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
+  backgroundTop: {
+    flex: 1,
     backgroundColor: COLORS.primary.main,
-    opacity: 0.1,
-    top: -100,
-    right: -100,
   },
-  decorativeCircle2: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: COLORS.secondary.main,
-    opacity: 0.08,
-    bottom: 100,
-    left: -80,
-  },
-  decorativeCircle3: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: COLORS.primary.light,
-    opacity: 0.06,
-    top: height * 0.4,
-    right: -50,
+  backgroundBottom: {
+    flex: 1,
+    backgroundColor: COLORS.light.backgroundSecondary,
   },
   keyboardView: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: SPACING.lg,
+    justifyContent: 'center',
   },
   logoSection: {
     alignItems: 'center',
     marginBottom: SPACING['2xl'],
   },
   logoContainer: {
-    marginBottom: SPACING.base,
-  },
-  logoGradient: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
+    width: 88,
+    height: 88,
+    borderRadius: RADIUS.xl,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...SHADOWS.xl,
+    marginBottom: SPACING.base,
   },
   logo: {
-    width: 70,
-    height: 70,
+    width: 56,
+    height: 56,
+    tintColor: '#FFFFFF',
   },
   brandName: {
     fontSize: TYPOGRAPHY.fontSize['3xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: '#FFFFFF',
+    letterSpacing: -0.5,
     marginBottom: SPACING.xs,
   },
   brandTagline: {
     fontSize: TYPOGRAPHY.fontSize.md,
-    color: COLORS.dark.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   formCard: {
+    backgroundColor: COLORS.light.surface,
     borderRadius: RADIUS['2xl'],
-    overflow: 'hidden',
-    ...SHADOWS.xl,
-  },
-  blurContainer: {
-    overflow: 'hidden',
-    borderRadius: RADIUS['2xl'],
-  },
-  formInner: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     padding: SPACING.xl,
-    borderRadius: RADIUS['2xl'],
+    ...SHADOWS.lg,
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: COLORS.light.surfaceVariant,
+    backgroundColor: COLORS.light.surfaceSecondary,
     borderRadius: RADIUS.lg,
     padding: 4,
     marginBottom: SPACING.xl,
@@ -551,7 +479,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
   },
   tabActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.light.surface,
     ...SHADOWS.sm,
   },
   tabText: {
@@ -569,15 +497,15 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.light.surfaceVariant,
+    backgroundColor: COLORS.light.surfaceSecondary,
     borderRadius: RADIUS.lg,
     marginBottom: SPACING.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: COLORS.light.border,
   },
   inputWrapperFocused: {
-    borderColor: COLORS.primary.main,
-    backgroundColor: '#FFFFFF',
+    borderColor: COLORS.primary.accent,
+    backgroundColor: COLORS.light.surface,
   },
   inputIconContainer: {
     width: 48,
@@ -603,22 +531,22 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   forgotPasswordText: {
-    color: COLORS.primary.main,
+    color: COLORS.primary.accent,
     fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   submitButton: {
+    backgroundColor: COLORS.primary.main,
     borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    ...SHADOWS.colored(COLORS.primary.main),
-  },
-  submitButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.base,
     paddingHorizontal: SPACING.xl,
     gap: SPACING.sm,
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
   submitButtonText: {
     color: '#FFFFFF',
@@ -654,17 +582,17 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.dark.text.tertiary,
+    color: COLORS.light.text.tertiary,
   },
   footerDivider: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: COLORS.primary.main,
+    backgroundColor: COLORS.primary.accent,
   },
   footerCredit: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary.main,
+    color: COLORS.primary.accent,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
 });

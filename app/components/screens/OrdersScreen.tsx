@@ -9,12 +9,12 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ORDER_STATUS } from '../../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
 
 const { width } = Dimensions.get('window');
@@ -46,11 +46,13 @@ interface Product {
   notes: string;
 }
 
+type FilterKey = 'all' | 'pending' | 'transfer' | 'delivered' | 'cancelled';
+
 interface StatusFilter {
+  key: FilterKey;
   label: string;
   value: string;
-  color: string;
-  icon: string;
+  count?: number;
 }
 
 export default function OrdersScreen() {
@@ -62,26 +64,23 @@ export default function OrdersScreen() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showProcessModal, setShowProcessModal] = useState(false);
-  const [tempProcess, setTempProcess] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
 
-  // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const statusFilters: StatusFilter[] = [
-    { label: 'Tumu', value: 'all', color: COLORS.light.text.secondary, icon: 'format-list-bulleted' },
-    { label: 'Bekleyen', value: 'Sipariş Oluşturuldu', color: COLORS.info.main, icon: 'clock-outline' },
-    { label: 'Transfer', value: 'Transfer Aşamasında', color: COLORS.warning.main, icon: 'truck-fast-outline' },
-    { label: 'Teslim', value: 'Teslim Edildi', color: COLORS.success.main, icon: 'check-circle-outline' },
-    { label: 'Iptal', value: 'İptal Edildi', color: COLORS.error.main, icon: 'close-circle-outline' },
+    { key: 'all', label: 'Tümü', value: 'all' },
+    { key: 'pending', label: 'Bekleyen', value: 'Sipariş Oluşturuldu' },
+    { key: 'transfer', label: 'Transfer', value: 'Transfer Aşamasında' },
+    { key: 'delivered', label: 'Teslim', value: 'Teslim Edildi' },
+    { key: 'cancelled', label: 'İptal', value: 'İptal Edildi' },
   ];
 
   useEffect(() => {
     fetchOrders();
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 500,
+      duration: 400,
       useNativeDriver: true,
     }).start();
   }, []);
@@ -107,8 +106,9 @@ export default function OrdersScreen() {
   const filterOrders = () => {
     let filtered = orders;
 
-    if (activeFilter !== 'all') {
-      filtered = filtered.filter(order => order.process === activeFilter);
+    const selectedFilter = statusFilters.find(f => f.key === activeFilter);
+    if (selectedFilter && selectedFilter.key !== 'all') {
+      filtered = filtered.filter(order => order.process === selectedFilter.value);
     }
 
     if (searchQuery.trim()) {
@@ -116,8 +116,7 @@ export default function OrdersScreen() {
       filtered = filtered.filter(order =>
         order.order_no.toLowerCase().includes(query) ||
         order.customer_name.toLowerCase().includes(query) ||
-        order.customer_country.toLowerCase().includes(query) ||
-        order.customer_city.toLowerCase().includes(query)
+        order.customer_country.toLowerCase().includes(query)
       );
     }
 
@@ -132,15 +131,15 @@ export default function OrdersScreen() {
   const getStatusConfig = (process: string) => {
     switch (process) {
       case 'Sipariş Oluşturuldu':
-        return { color: COLORS.info.main, bg: COLORS.info.bg, icon: 'clipboard-plus-outline', label: 'Bekleyen' };
+        return ORDER_STATUS.created;
       case 'Transfer Aşamasında':
-        return { color: COLORS.warning.main, bg: COLORS.warning.bg, icon: 'truck-fast-outline', label: 'Transferde' };
+        return ORDER_STATUS.transfer;
       case 'Teslim Edildi':
-        return { color: COLORS.success.main, bg: COLORS.success.bg, icon: 'check-circle', label: 'Teslim Edildi' };
+        return ORDER_STATUS.delivered;
       case 'İptal Edildi':
-        return { color: COLORS.error.main, bg: COLORS.error.bg, icon: 'close-circle', label: 'Iptal' };
+        return ORDER_STATUS.cancelled;
       default:
-        return { color: COLORS.light.text.tertiary, bg: COLORS.light.surfaceVariant, icon: 'help-circle', label: 'Bilinmiyor' };
+        return ORDER_STATUS.created;
     }
   };
 
@@ -169,114 +168,121 @@ export default function OrdersScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('tr-TR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.toLocaleDateString('tr-TR', { month: 'short' });
+    return { day, month };
   };
 
-  const renderFilterChips = () => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.filterContainer}
-    >
-      {statusFilters.map((filter) => {
-        const isActive = activeFilter === filter.value;
-        return (
-          <TouchableOpacity
-            key={filter.value}
-            style={[
-              styles.filterChip,
-              isActive && { backgroundColor: filter.color }
-            ]}
-            onPress={() => setActiveFilter(filter.value)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              name={filter.icon}
-              size={16}
-              color={isActive ? '#fff' : filter.color}
-            />
-            <ThemedText style={[
-              styles.filterChipText,
-              isActive && { color: '#fff' }
-            ]}>
-              {filter.label}
-            </ThemedText>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const getFilterCount = (filterKey: FilterKey) => {
+    if (filterKey === 'all') return orders.length;
+    const filter = statusFilters.find(f => f.key === filterKey);
+    if (!filter) return 0;
+    return orders.filter(order => order.process === filter.value).length;
+  };
+
+  const renderFilterTabs = () => (
+    <View style={styles.filterContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterScrollContent}
+      >
+        {statusFilters.map((filter) => {
+          const isActive = activeFilter === filter.key;
+          const count = getFilterCount(filter.key);
+          return (
+            <TouchableOpacity
+              key={filter.key}
+              style={[styles.filterTab, isActive && styles.filterTabActive]}
+              onPress={() => setActiveFilter(filter.key)}
+              activeOpacity={0.7}
+            >
+              <ThemedText style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+                {filter.label}
+              </ThemedText>
+              <View style={[styles.filterBadge, isActive && styles.filterBadgeActive]}>
+                <ThemedText style={[styles.filterBadgeText, isActive && styles.filterBadgeTextActive]}>
+                  {count}
+                </ThemedText>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 
   const renderOrderCard = (order: Order, index: number) => {
-    const status = getStatusConfig(order.process);
+    const statusConfig = getStatusConfig(order.process);
     const products: Product[] = JSON.parse(order.products);
     const total = calculateOrderTotal(products);
+    const { day, month } = formatDate(order.date);
 
     return (
       <Animated.View
         key={order.id}
         style={[
           styles.orderCard,
-          { opacity: fadeAnim }
+          { opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [20, 0]
+          })}]}
         ]}
       >
         <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            setSelectedOrder(order);
-            setShowModal(true);
-          }}
+          style={styles.orderCardContent}
+          onPress={() => { setSelectedOrder(order); setShowModal(true); }}
+          activeOpacity={0.7}
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={styles.orderNoContainer}>
-                <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
-                <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-                  <IconSymbol name={status.icon} size={12} color={status.color} />
-                  <ThemedText style={[styles.statusText, { color: status.color }]}>
-                    {status.label}
-                  </ThemedText>
-                </View>
-              </View>
-              <ThemedText style={styles.orderDate}>
-                {formatDate(order.date)}
-              </ThemedText>
-            </View>
-            <View style={styles.cardHeaderRight}>
-              <ThemedText style={styles.totalLabel}>Toplam</ThemedText>
-              <ThemedText style={styles.totalAmount}>${total.toFixed(2)}</ThemedText>
-            </View>
+          {/* Date Column */}
+          <View style={styles.dateColumn}>
+            <ThemedText style={styles.dateDay}>{day}</ThemedText>
+            <ThemedText style={styles.dateMonth}>{month}</ThemedText>
           </View>
 
-          <View style={styles.cardBody}>
-            <View style={styles.customerInfo}>
-              <View style={styles.customerAvatar}>
-                <ThemedText style={styles.avatarText}>
-                  {order.customer_name.charAt(0).toUpperCase()}
-                </ThemedText>
-              </View>
-              <View style={styles.customerDetails}>
+          {/* Main Content */}
+          <View style={styles.orderMainContent}>
+            {/* Header Row */}
+            <View style={styles.orderHeader}>
+              <View style={styles.orderInfo}>
+                <ThemedText style={styles.orderNo}>#{order.order_no}</ThemedText>
                 <ThemedText style={styles.customerName}>{order.customer_name}</ThemedText>
-                <View style={styles.locationRow}>
-                  <IconSymbol name="map-marker-outline" size={14} color={COLORS.light.text.tertiary} />
-                  <ThemedText style={styles.locationText}>
-                    {order.customer_city}, {order.customer_country}
-                  </ThemedText>
-                </View>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                <ThemedText style={[styles.statusText, { color: statusConfig.textColor }]}>
+                  {statusConfig.label}
+                </ThemedText>
               </View>
             </View>
 
-            <View style={styles.productsPreview}>
-              <View style={styles.productsInfo}>
-                <IconSymbol name="package-variant" size={16} color={COLORS.primary.main} />
-                <ThemedText style={styles.productsCount}>
-                  {products.length} urun
+            {/* Details Row */}
+            <View style={styles.orderDetails}>
+              <View style={styles.detailItem}>
+                <IconSymbol name="map-marker-outline" size={14} color={COLORS.light.text.tertiary} />
+                <ThemedText style={styles.detailText}>
+                  {order.customer_city}, {order.customer_country}
                 </ThemedText>
               </View>
+              <View style={styles.detailItem}>
+                <IconSymbol name="package-variant" size={14} color={COLORS.light.text.tertiary} />
+                <ThemedText style={styles.detailText}>
+                  {products.length} ürün
+                </ThemedText>
+              </View>
+            </View>
+
+            {/* Footer Row */}
+            <View style={styles.orderFooter}>
+              <ThemedText style={styles.totalAmount}>{formatCurrency(total)}</ThemedText>
               <IconSymbol name="chevron-right" size={20} color={COLORS.light.text.tertiary} />
             </View>
           </View>
@@ -288,7 +294,7 @@ export default function OrdersScreen() {
   const renderDetailModal = () => {
     if (!selectedOrder) return null;
 
-    const status = getStatusConfig(selectedOrder.process);
+    const statusConfig = getStatusConfig(selectedOrder.process);
     const products: Product[] = JSON.parse(selectedOrder.products);
     const total = calculateOrderTotal(products);
 
@@ -296,230 +302,169 @@ export default function OrdersScreen() {
       <Modal
         visible={showModal}
         animationType="slide"
-        transparent={true}
+        presentationStyle="pageSheet"
         onRequestClose={() => setShowModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-
-            <View style={styles.modalHeader}>
-              <View>
-                <ThemedText style={styles.modalOrderNo}>#{selectedOrder.order_no}</ThemedText>
-                <ThemedText style={styles.modalDate}>{formatDate(selectedOrder.date)}</ThemedText>
-              </View>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowModal(false)}
-              >
-                <IconSymbol name="close" size={24} color={COLORS.light.text.secondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <TouchableOpacity
-                style={[styles.statusCard, { backgroundColor: status.bg }]}
-                onPress={() => {
-                  setTempProcess(selectedOrder.process);
-                  setShowProcessModal(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.statusCardContent}>
-                  <IconSymbol name={status.icon} size={24} color={status.color} />
-                  <View style={styles.statusCardText}>
-                    <ThemedText style={[styles.statusCardTitle, { color: status.color }]}>
-                      {selectedOrder.process}
-                    </ThemedText>
-                    <ThemedText style={styles.statusCardSubtitle}>Durumu degistirmek icin dokun</ThemedText>
-                  </View>
-                </View>
-                <IconSymbol name="chevron-right" size={20} color={status.color} />
-              </TouchableOpacity>
-
-              <View style={styles.section}>
-                <ThemedText style={styles.sectionTitle}>Musteri Bilgileri</ThemedText>
-                <View style={styles.infoCard}>
-                  <View style={styles.infoRow}>
-                    <IconSymbol name="account" size={20} color={COLORS.primary.main} />
-                    <View style={styles.infoContent}>
-                      <ThemedText style={styles.infoLabel}>Ad Soyad</ThemedText>
-                      <ThemedText style={styles.infoValue}>{selectedOrder.customer_name}</ThemedText>
-                    </View>
-                  </View>
-                  <View style={styles.infoDivider} />
-                  <View style={styles.infoRow}>
-                    <IconSymbol name="map-marker" size={20} color={COLORS.primary.main} />
-                    <View style={styles.infoContent}>
-                      <ThemedText style={styles.infoLabel}>Konum</ThemedText>
-                      <ThemedText style={styles.infoValue}>
-                        {selectedOrder.customer_city}, {selectedOrder.customer_country}
-                      </ThemedText>
-                    </View>
-                  </View>
-                  {selectedOrder.customer_phone && (
-                    <>
-                      <View style={styles.infoDivider} />
-                      <View style={styles.infoRow}>
-                        <IconSymbol name="phone" size={20} color={COLORS.primary.main} />
-                        <View style={styles.infoContent}>
-                          <ThemedText style={styles.infoLabel}>Telefon</ThemedText>
-                          <ThemedText style={styles.infoValue}>{selectedOrder.customer_phone}</ThemedText>
-                        </View>
-                      </View>
-                    </>
-                  )}
-                  {selectedOrder.customer_email && (
-                    <>
-                      <View style={styles.infoDivider} />
-                      <View style={styles.infoRow}>
-                        <IconSymbol name="email" size={20} color={COLORS.primary.main} />
-                        <View style={styles.infoContent}>
-                          <ThemedText style={styles.infoLabel}>E-posta</ThemedText>
-                          <ThemedText style={styles.infoValue}>{selectedOrder.customer_email}</ThemedText>
-                        </View>
-                      </View>
-                    </>
-                  )}
-                </View>
-              </View>
-
-              {(selectedOrder.salesman || selectedOrder.conference) && (
-                <View style={styles.section}>
-                  <ThemedText style={styles.sectionTitle}>Satis Bilgileri</ThemedText>
-                  <View style={styles.infoCard}>
-                    {selectedOrder.salesman && (
-                      <View style={styles.infoRow}>
-                        <IconSymbol name="account-tie" size={20} color={COLORS.secondary.main} />
-                        <View style={styles.infoContent}>
-                          <ThemedText style={styles.infoLabel}>Satis Temsilcisi</ThemedText>
-                          <ThemedText style={styles.infoValue}>{selectedOrder.salesman}</ThemedText>
-                        </View>
-                      </View>
-                    )}
-                    {selectedOrder.conference && (
-                      <>
-                        <View style={styles.infoDivider} />
-                        <View style={styles.infoRow}>
-                          <IconSymbol name="presentation" size={20} color={COLORS.secondary.main} />
-                          <View style={styles.infoContent}>
-                            <ThemedText style={styles.infoLabel}>Konferans</ThemedText>
-                            <ThemedText style={styles.infoValue}>{selectedOrder.conference}</ThemedText>
-                          </View>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                </View>
-              )}
-
-              <View style={styles.section}>
-                <ThemedText style={styles.sectionTitle}>Urunler ({products.length})</ThemedText>
-                <View style={styles.productsCard}>
-                  {products.map((product, index) => (
-                    <View key={index}>
-                      <View style={styles.productItem}>
-                        <View style={styles.productInfo}>
-                          <ThemedText style={styles.productName}>{product.name}</ThemedText>
-                          {product.size && (
-                            <ThemedText style={styles.productSize}>Boyut: {product.size}</ThemedText>
-                          )}
-                        </View>
-                        <View style={styles.productPricing}>
-                          <ThemedText style={styles.productQuantity}>x{product.quantity}</ThemedText>
-                          <ThemedText style={styles.productPrice}>${product.price}</ThemedText>
-                        </View>
-                      </View>
-                      {index < products.length - 1 && <View style={styles.productDivider} />}
-                    </View>
-                  ))}
-
-                  <LinearGradient
-                    colors={COLORS.gradients.primary}
-                    style={styles.totalCard}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    <ThemedText style={styles.totalCardLabel}>Toplam Tutar</ThemedText>
-                    <ThemedText style={styles.totalCardValue}>${total.toFixed(2)}</ThemedText>
-                  </LinearGradient>
-                </View>
-              </View>
-
-              <View style={{ height: 40 }} />
-            </ScrollView>
+        <View style={styles.modalContainer}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowModal(false)}
+            >
+              <IconSymbol name="close" size={24} color={COLORS.light.text.primary} />
+            </TouchableOpacity>
+            <ThemedText style={styles.modalTitle}>Sipariş Detayı</ThemedText>
+            <View style={styles.modalHeaderSpacer} />
           </View>
-        </View>
-      </Modal>
-    );
-  };
 
-  const renderProcessModal = () => {
-    const processes = [
-      { value: 'Sipariş Oluşturuldu', ...getStatusConfig('Sipariş Oluşturuldu') },
-      { value: 'Transfer Aşamasında', ...getStatusConfig('Transfer Aşamasında') },
-      { value: 'Teslim Edildi', ...getStatusConfig('Teslim Edildi') },
-      { value: 'İptal Edildi', ...getStatusConfig('İptal Edildi') },
-    ];
-
-    return (
-      <Modal
-        visible={showProcessModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowProcessModal(false)}
-      >
-        <View style={styles.processModalOverlay}>
-          <View style={styles.processModalContent}>
-            <ThemedText style={styles.processModalTitle}>Siparis Durumu</ThemedText>
-
-            {processes.map((process) => (
-              <TouchableOpacity
-                key={process.value}
-                style={[
-                  styles.processOption,
-                  tempProcess === process.value && { backgroundColor: process.bg }
-                ]}
-                onPress={() => setTempProcess(process.value)}
-              >
-                <IconSymbol
-                  name={process.icon}
-                  size={24}
-                  color={tempProcess === process.value ? process.color : COLORS.light.text.tertiary}
-                />
-                <ThemedText style={[
-                  styles.processOptionText,
-                  tempProcess === process.value && { color: process.color, fontWeight: '600' }
-                ]}>
-                  {process.value}
-                </ThemedText>
-                {tempProcess === process.value && (
-                  <IconSymbol name="check" size={20} color={process.color} />
-                )}
-              </TouchableOpacity>
-            ))}
-
-            <View style={styles.processModalActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowProcessModal(false)}
-              >
-                <ThemedText style={styles.cancelButtonText}>Iptal</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={() => selectedOrder && handleProcessUpdate(selectedOrder.id, tempProcess)}
-              >
-                <LinearGradient
-                  colors={COLORS.gradients.primary}
-                  style={styles.saveButtonGradient}
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalScrollContent}
+          >
+            {/* Order Header Card */}
+            <View style={styles.detailCard}>
+              <View style={styles.detailCardHeader}>
+                <View>
+                  <ThemedText style={styles.detailOrderNo}>#{selectedOrder.order_no}</ThemedText>
+                  <ThemedText style={styles.detailDate}>
+                    {new Date(selectedOrder.date).toLocaleDateString('tr-TR', {
+                      day: 'numeric', month: 'long', year: 'numeric'
+                    })}
+                  </ThemedText>
+                </View>
+                <TouchableOpacity
+                  style={[styles.detailStatusBadge, { backgroundColor: statusConfig.bgColor }]}
+                  onPress={() => setShowProcessModal(true)}
                 >
-                  <ThemedText style={styles.saveButtonText}>Kaydet</ThemedText>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <ThemedText style={[styles.detailStatusText, { color: statusConfig.textColor }]}>
+                    {statusConfig.label}
+                  </ThemedText>
+                  <IconSymbol name="chevron-down" size={16} color={statusConfig.textColor} />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+
+            {/* Customer Info */}
+            <View style={styles.sectionCard}>
+              <ThemedText style={styles.sectionTitle}>Müşteri Bilgileri</ThemedText>
+              <View style={styles.infoGrid}>
+                <View style={styles.infoRow}>
+                  <IconSymbol name="account-outline" size={18} color={COLORS.light.text.tertiary} />
+                  <View style={styles.infoContent}>
+                    <ThemedText style={styles.infoLabel}>Ad Soyad</ThemedText>
+                    <ThemedText style={styles.infoValue}>{selectedOrder.customer_name}</ThemedText>
+                  </View>
+                </View>
+                <View style={styles.infoRow}>
+                  <IconSymbol name="map-marker-outline" size={18} color={COLORS.light.text.tertiary} />
+                  <View style={styles.infoContent}>
+                    <ThemedText style={styles.infoLabel}>Adres</ThemedText>
+                    <ThemedText style={styles.infoValue}>
+                      {selectedOrder.customer_city}, {selectedOrder.customer_country}
+                    </ThemedText>
+                  </View>
+                </View>
+                <View style={styles.infoRow}>
+                  <IconSymbol name="phone-outline" size={18} color={COLORS.light.text.tertiary} />
+                  <View style={styles.infoContent}>
+                    <ThemedText style={styles.infoLabel}>Telefon</ThemedText>
+                    <ThemedText style={styles.infoValue}>{selectedOrder.customer_phone}</ThemedText>
+                  </View>
+                </View>
+                <View style={styles.infoRow}>
+                  <IconSymbol name="email-outline" size={18} color={COLORS.light.text.tertiary} />
+                  <View style={styles.infoContent}>
+                    <ThemedText style={styles.infoLabel}>E-posta</ThemedText>
+                    <ThemedText style={styles.infoValue}>{selectedOrder.customer_email}</ThemedText>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Products */}
+            <View style={styles.sectionCard}>
+              <ThemedText style={styles.sectionTitle}>Ürünler</ThemedText>
+              {products.map((product, index) => (
+                <View key={index} style={[styles.productItem, index !== products.length - 1 && styles.productItemBorder]}>
+                  <View style={styles.productInfo}>
+                    <ThemedText style={styles.productName}>{product.name}</ThemedText>
+                    <ThemedText style={styles.productMeta}>
+                      {product.size} • {product.quantity} adet
+                    </ThemedText>
+                  </View>
+                  <ThemedText style={styles.productPrice}>
+                    {formatCurrency(parseFloat(product.price) * parseInt(product.quantity))}
+                  </ThemedText>
+                </View>
+              ))}
+              <View style={styles.totalRow}>
+                <ThemedText style={styles.totalLabel}>Toplam</ThemedText>
+                <ThemedText style={styles.totalValue}>{formatCurrency(total)}</ThemedText>
+              </View>
+            </View>
+
+            {/* Sales Info */}
+            <View style={styles.sectionCard}>
+              <ThemedText style={styles.sectionTitle}>Satış Bilgileri</ThemedText>
+              <View style={styles.salesGrid}>
+                {selectedOrder.salesman && (
+                  <View style={styles.salesItem}>
+                    <ThemedText style={styles.salesLabel}>Satıcı</ThemedText>
+                    <ThemedText style={styles.salesValue}>{selectedOrder.salesman}</ThemedText>
+                  </View>
+                )}
+                {selectedOrder.agency && (
+                  <View style={styles.salesItem}>
+                    <ThemedText style={styles.salesLabel}>Acenta</ThemedText>
+                    <ThemedText style={styles.salesValue}>{selectedOrder.agency}</ThemedText>
+                  </View>
+                )}
+                {selectedOrder.guide && (
+                  <View style={styles.salesItem}>
+                    <ThemedText style={styles.salesLabel}>Rehber</ThemedText>
+                    <ThemedText style={styles.salesValue}>{selectedOrder.guide}</ThemedText>
+                  </View>
+                )}
+              </View>
+            </View>
+          </ScrollView>
         </View>
+
+        {/* Process Update Modal */}
+        <Modal
+          visible={showProcessModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowProcessModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.processModalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowProcessModal(false)}
+          >
+            <View style={styles.processModalContent}>
+              <ThemedText style={styles.processModalTitle}>Durumu Güncelle</ThemedText>
+              {[ORDER_STATUS.created, ORDER_STATUS.transfer, ORDER_STATUS.delivered, ORDER_STATUS.cancelled].map((status) => (
+                <TouchableOpacity
+                  key={status.key}
+                  style={[
+                    styles.processOption,
+                    selectedOrder.process === status.key && styles.processOptionActive
+                  ]}
+                  onPress={() => handleProcessUpdate(selectedOrder.id, status.key)}
+                >
+                  <View style={[styles.processOptionDot, { backgroundColor: status.color }]} />
+                  <ThemedText style={styles.processOptionText}>{status.label}</ThemedText>
+                  {selectedOrder.process === status.key && (
+                    <IconSymbol name="check" size={18} color={COLORS.primary.accent} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </Modal>
     );
   };
@@ -528,77 +473,63 @@ export default function OrdersScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary.main} />
-        <ThemedText style={styles.loadingText}>Siparisler yukleniyor...</ThemedText>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchSection}>
-        <View style={[
-          styles.searchBar,
-          isSearchFocused && styles.searchBarFocused
-        ]}>
-          <IconSymbol
-            name="magnify"
-            size={22}
-            color={isSearchFocused ? COLORS.primary.main : COLORS.light.text.tertiary}
-          />
+      <StatusBar barStyle="dark-content" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <ThemedText style={styles.headerTitle}>Siparişler</ThemedText>
+          <ThemedText style={styles.headerSubtitle}>{orders.length} sipariş</ThemedText>
+        </View>
+
+        {/* Search */}
+        <View style={styles.searchContainer}>
+          <IconSymbol name="magnify" size={20} color={COLORS.light.text.tertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Siparis ara..."
+            placeholder="Sipariş veya müşteri ara..."
             placeholderTextColor={COLORS.light.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <IconSymbol name="close-circle" size={20} color={COLORS.light.text.tertiary} />
+              <IconSymbol name="close-circle" size={18} color={COLORS.light.text.tertiary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {renderFilterChips()}
+      {/* Filter Tabs */}
+      {renderFilterTabs()}
 
-      <View style={styles.resultsHeader}>
-        <ThemedText style={styles.resultsCount}>
-          {filteredOrders.length} siparis bulundu
-        </ThemedText>
-      </View>
-
+      {/* Orders List */}
       <ScrollView
         style={styles.ordersList}
         contentContainerStyle={styles.ordersListContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.primary.main]}
-            tintColor={COLORS.primary.main}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary.main} />
         }
       >
-        {filteredOrders.length > 0 ? (
-          filteredOrders.map((order, index) => renderOrderCard(order, index))
-        ) : (
+        {filteredOrders.length === 0 ? (
           <View style={styles.emptyState}>
-            <IconSymbol name="package-variant-closed" size={64} color={COLORS.light.border} />
-            <ThemedText style={styles.emptyStateTitle}>Siparis Bulunamadi</ThemedText>
-            <ThemedText style={styles.emptyStateText}>
-              Arama kriterlerinize uygun siparis yok
-            </ThemedText>
+            <IconSymbol name="package-variant" size={48} color={COLORS.light.text.tertiary} />
+            <ThemedText style={styles.emptyStateText}>Sipariş bulunamadı</ThemedText>
           </View>
+        ) : (
+          filteredOrders.map((order, index) => renderOrderCard(order, index))
         )}
         <View style={{ height: 100 }} />
       </ScrollView>
 
       {renderDetailModal()}
-      {renderProcessModal()}
     </View>
   );
 }
@@ -614,295 +545,311 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.light.background,
   },
-  loadingText: {
-    marginTop: SPACING.md,
-    fontSize: TYPOGRAPHY.fontSize.md,
-    color: COLORS.light.text.secondary,
-  },
-  searchSection: {
+
+  // Header
+  header: {
     paddingHorizontal: SPACING.base,
     paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
+    paddingBottom: SPACING.base,
+    backgroundColor: COLORS.light.background,
   },
-  searchBar: {
+  headerTop: {
+    marginBottom: SPACING.base,
+  },
+  headerTitle: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: SPACING.xs,
+  },
+
+  // Search
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.base,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderWidth: 2,
-    borderColor: COLORS.light.border,
-    ...SHADOWS.sm,
-  },
-  searchBarFocused: {
-    borderColor: COLORS.primary.main,
+    height: 44,
+    gap: SPACING.sm,
   },
   searchInput: {
     flex: 1,
-    marginLeft: SPACING.sm,
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.primary,
   },
+
+  // Filters
   filterContainer: {
+    backgroundColor: COLORS.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.divider,
+  },
+  filterScrollContent: {
     paddingHorizontal: SPACING.base,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     gap: SPACING.sm,
   },
-  filterChip: {
+  filterTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.light.surface,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.full,
-    marginRight: SPACING.sm,
-    gap: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
+    backgroundColor: COLORS.light.surfaceSecondary,
+    gap: SPACING.sm,
   },
-  filterChipText: {
+  filterTabActive: {
+    backgroundColor: COLORS.primary.main,
+  },
+  filterTabText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
     color: COLORS.light.text.secondary,
   },
-  resultsHeader: {
-    paddingHorizontal: SPACING.base,
-    paddingVertical: SPACING.sm,
+  filterTabTextActive: {
+    color: COLORS.light.text.inverse,
   },
-  resultsCount: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
+  filterBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.light.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xs,
   },
+  filterBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  filterBadgeText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.secondary,
+  },
+  filterBadgeTextActive: {
+    color: COLORS.light.text.inverse,
+  },
+
+  // Orders List
   ordersList: {
     flex: 1,
   },
   ordersListContent: {
-    paddingHorizontal: SPACING.base,
+    padding: SPACING.base,
+    gap: SPACING.md,
   },
+
+  // Order Card
   orderCard: {
     backgroundColor: COLORS.light.surface,
     borderRadius: RADIUS.xl,
-    marginBottom: SPACING.md,
-    ...SHADOWS.md,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  orderCardContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     padding: SPACING.base,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.light.borderLight,
   },
-  cardHeaderLeft: {},
-  cardHeaderRight: {
-    alignItems: 'flex-end',
-  },
-  orderNoContainer: {
-    flexDirection: 'row',
+  dateColumn: {
+    width: 48,
     alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.xs,
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+    paddingRight: SPACING.md,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.light.divider,
   },
-  orderNo: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
+  dateDay: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
   },
-  statusBadge: {
+  dateMonth: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.tertiary,
+    textTransform: 'uppercase',
+  },
+  orderMainContent: {
+    flex: 1,
+  },
+  orderHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  orderInfo: {
+    flex: 1,
+  },
+  orderNo: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  customerName: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.primary,
+    marginTop: 2,
+  },
+  statusBadge: {
     paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.full,
-    gap: 4,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
   },
   statusText: {
     fontSize: TYPOGRAPHY.fontSize.xs,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
-  orderDate: {
+  orderDetails: {
+    flexDirection: 'row',
+    gap: SPACING.base,
+    marginBottom: SPACING.sm,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  detailText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
   },
-  totalLabel: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.light.text.tertiary,
-    marginBottom: 2,
-  },
-  totalAmount: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.primary.main,
-  },
-  cardBody: {
-    padding: SPACING.base,
-  },
-  customerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  customerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary.main,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  avatarText: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: '#FFFFFF',
-  },
-  customerDetails: {},
-  customerName: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.primary,
-    marginBottom: 2,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  locationText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
-  },
-  productsPreview: {
+  orderFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.light.surfaceVariant,
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
   },
-  productsInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
+  totalAmount: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
   },
-  productsCount: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.medium,
-    color: COLORS.light.text.secondary,
-  },
+
+  // Empty State
   emptyState: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING['5xl'],
-  },
-  emptyStateTitle: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.primary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.xs,
+    alignItems: 'center',
+    paddingVertical: SPACING['4xl'],
+    gap: SPACING.md,
   },
   emptyStateText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.tertiary,
-    textAlign: 'center',
   },
-  modalOverlay: {
+
+  // Modal
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.light.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
-    maxHeight: '90%',
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: COLORS.light.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.light.background,
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.base,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.light.border,
+    borderBottomColor: COLORS.light.divider,
   },
-  modalOrderNo: {
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.light.surfaceSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  modalHeaderSpacer: {
+    width: 40,
+  },
+  modalContent: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: SPACING.base,
+    gap: SPACING.base,
+  },
+
+  // Detail Card
+  detailCard: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  detailCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  detailOrderNo: {
     fontSize: TYPOGRAPHY.fontSize['2xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
   },
-  modalDate: {
+  detailDate: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
-    marginTop: 2,
+    marginTop: SPACING.xs,
   },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.light.surfaceVariant,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBody: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-  },
-  statusCard: {
+  detailStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.base,
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.base,
+    gap: SPACING.xs,
   },
-  statusCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  statusCardText: {},
-  statusCardTitle: {
-    fontSize: TYPOGRAPHY.fontSize.base,
+  detailStatusText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
-  statusCardSubtitle: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.light.text.tertiary,
-    marginTop: 2,
-  },
-  section: {
-    marginBottom: SPACING.lg,
+
+  // Section Card
+  sectionCard: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
   },
   sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.base,
+    fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.primary,
-    marginBottom: SPACING.md,
+    color: COLORS.light.text.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: SPACING.base,
   },
-  infoCard: {
-    backgroundColor: COLORS.light.surfaceVariant,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.base,
+
+  // Info Grid
+  infoGrid: {
+    gap: SPACING.base,
   },
   infoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: SPACING.md,
   },
-  infoContent: {},
+  infoContent: {
+    flex: 1,
+  },
   infoLabel: {
     fontSize: TYPOGRAPHY.fontSize.xs,
     color: COLORS.light.text.tertiary,
@@ -911,129 +858,119 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.primary,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
-  infoDivider: {
-    height: 1,
-    backgroundColor: COLORS.light.border,
-    marginVertical: SPACING.md,
-  },
-  productsCard: {
-    backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
-    overflow: 'hidden',
-  },
+
+  // Products
   productItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.base,
+    paddingVertical: SPACING.md,
   },
-  productInfo: {},
+  productItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.divider,
+  },
+  productInfo: {
+    flex: 1,
+  },
   productName: {
     fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
     color: COLORS.light.text.primary,
-    marginBottom: 2,
   },
-  productSize: {
+  productMeta: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
-  },
-  productPricing: {
-    alignItems: 'flex-end',
-  },
-  productQuantity: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
-    marginBottom: 2,
+    marginTop: 2,
   },
   productPrice: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.primary.main,
+    color: COLORS.light.text.primary,
   },
-  productDivider: {
-    height: 1,
-    backgroundColor: COLORS.light.borderLight,
-  },
-  totalCard: {
+  totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.base,
+    paddingTop: SPACING.base,
+    marginTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.divider,
   },
-  totalCardLabel: {
+  totalLabel: {
     fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
-    color: 'rgba(255,255,255,0.8)',
+    color: COLORS.light.text.secondary,
   },
-  totalCardValue: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
+  totalValue: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: '#FFFFFF',
+    color: COLORS.light.text.primary,
   },
+
+  // Sales Grid
+  salesGrid: {
+    gap: SPACING.base,
+  },
+  salesItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  salesLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  salesValue: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.primary,
+  },
+
+  // Process Modal
   processModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.light.overlay,
     justifyContent: 'center',
-    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+    padding: SPACING.xl,
   },
   processModalContent: {
     backgroundColor: COLORS.light.surface,
     borderRadius: RADIUS['2xl'],
     padding: SPACING.lg,
+    width: '100%',
+    maxWidth: 320,
   },
   processModalTitle: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.primary,
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.base,
     textAlign: 'center',
   },
   processOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.base,
-    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.base,
     marginBottom: SPACING.sm,
     gap: SPACING.md,
+  },
+  processOptionActive: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+  },
+  processOptionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: RADIUS.full,
   },
   processOptionText: {
     flex: 1,
     fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.light.text.secondary,
-  },
-  processModalActions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.lg,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    backgroundColor: COLORS.light.surfaceVariant,
-    borderRadius: RADIUS.lg,
-  },
-  cancelButtonText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.secondary,
-  },
-  saveButton: {
-    flex: 1,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-  },
-  saveButtonGradient: {
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: '#FFFFFF',
+    color: COLORS.light.text.primary,
   },
 });
