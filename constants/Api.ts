@@ -27,13 +27,21 @@ const getBaseUrl = (): string => {
 export const API_BASE_URL = getBaseUrl();
 
 export const API_ENDPOINTS = {
+  // Auth
   login: `${API_BASE_URL}/api/login`,
   register: `${API_BASE_URL}/api/register`,
+  // Core
   orders: `${API_BASE_URL}/api/orders`,
   users: `${API_BASE_URL}/api/users`,
   customers: `${API_BASE_URL}/api/customers`,
   customersSearch: `${API_BASE_URL}/api/customers/search`,
   products: `${API_BASE_URL}/api/products`,
+  // Analytics
+  analyticsDashboard: `${API_BASE_URL}/api/analytics/dashboard`,
+  analyticsMonthlyTrends: `${API_BASE_URL}/api/analytics/monthly-trends`,
+  analyticsOrdersByCountry: `${API_BASE_URL}/api/analytics/orders-by-country`,
+  analyticsTopProducts: `${API_BASE_URL}/api/analytics/top-products`,
+  analyticsTopCustomers: `${API_BASE_URL}/api/analytics/top-customers`,
 };
 
 // Fetch with timeout wrapper

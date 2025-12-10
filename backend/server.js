@@ -590,6 +590,259 @@ app.delete('/api/products/:id', (req, res) => {
   }
 });
 
+// ==================== ANALYTICS API ENDPOINTS ====================
+
+// Dashboard istatistikleri
+app.get('/api/analytics/dashboard', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT * FROM siparisler').all();
+    const customers = db.prepare('SELECT COUNT(*) as count FROM musteriler').get();
+    const products = db.prepare('SELECT COUNT(*) as count FROM urunler').get();
+
+    const currentDate = new Date();
+    const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    const firstDayOfYear = new Date(currentDate.getFullYear(), 0, 1);
+
+    let monthlyRevenue = 0;
+    let monthlyExpenses = 0;
+    let yearlyRevenue = 0;
+    let yearlyExpenses = 0;
+
+    const statusCounts = {
+      pending: 0,
+      transfer: 0,
+      delivered: 0,
+      cancelled: 0
+    };
+
+    orders.forEach(order => {
+      const orderDate = new Date(order.date);
+      const products = JSON.parse(order.products || '[]');
+
+      let orderRevenue = 0;
+      let orderExpense = 0;
+
+      products.forEach(product => {
+        const price = parseFloat(product.price) || 0;
+        const cost = parseFloat(product.cost) || 0;
+        const quantity = parseInt(product.quantity) || 0;
+        orderRevenue += price * quantity;
+        orderExpense += cost * quantity;
+      });
+
+      if (orderDate >= firstDayOfMonth) {
+        monthlyRevenue += orderRevenue;
+        monthlyExpenses += orderExpense;
+      }
+
+      if (orderDate >= firstDayOfYear) {
+        yearlyRevenue += orderRevenue;
+        yearlyExpenses += orderExpense;
+      }
+
+      switch(order.process) {
+        case 'Sipariş Oluşturuldu': statusCounts.pending++; break;
+        case 'Transfer Aşamasında': statusCounts.transfer++; break;
+        case 'Teslim Edildi': statusCounts.delivered++; break;
+        case 'İptal Edildi': statusCounts.cancelled++; break;
+      }
+    });
+
+    res.json({
+      totalOrders: orders.length,
+      totalCustomers: customers.count,
+      totalProducts: products.count,
+      statusCounts,
+      monthly: {
+        revenue: monthlyRevenue,
+        expenses: monthlyExpenses,
+        profit: monthlyRevenue - monthlyExpenses,
+        profitMargin: monthlyRevenue > 0 ? ((monthlyRevenue - monthlyExpenses) / monthlyRevenue * 100).toFixed(1) : 0
+      },
+      yearly: {
+        revenue: yearlyRevenue,
+        expenses: yearlyExpenses,
+        profit: yearlyRevenue - yearlyExpenses,
+        profitMargin: yearlyRevenue > 0 ? ((yearlyRevenue - yearlyExpenses) / yearlyRevenue * 100).toFixed(1) : 0
+      }
+    });
+  } catch (error) {
+    console.error('Dashboard istatistikleri hatasi:', error);
+    res.status(500).json({ error: 'Istatistikler getirilemedi' });
+  }
+});
+
+// Aylik gelir/gider trend
+app.get('/api/analytics/monthly-trends', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT * FROM siparisler ORDER BY date ASC').all();
+    const monthlyData = {};
+
+    orders.forEach(order => {
+      const date = new Date(order.date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { revenue: 0, expenses: 0, orders: 0 };
+      }
+
+      const products = JSON.parse(order.products || '[]');
+      products.forEach(product => {
+        const price = parseFloat(product.price) || 0;
+        const cost = parseFloat(product.cost) || 0;
+        const quantity = parseInt(product.quantity) || 0;
+        monthlyData[monthKey].revenue += price * quantity;
+        monthlyData[monthKey].expenses += cost * quantity;
+      });
+      monthlyData[monthKey].orders++;
+    });
+
+    const trends = Object.entries(monthlyData).map(([month, data]) => ({
+      month,
+      ...data,
+      profit: data.revenue - data.expenses
+    }));
+
+    res.json(trends);
+  } catch (error) {
+    console.error('Aylik trend hatasi:', error);
+    res.status(500).json({ error: 'Trendler getirilemedi' });
+  }
+});
+
+// Ulke bazinda siparis dagilimi
+app.get('/api/analytics/orders-by-country', (req, res) => {
+  try {
+    const orders = db.prepare(`
+      SELECT customer_country, COUNT(*) as order_count,
+             SUM(CAST(json_extract(products, '$[0].price') AS REAL) * CAST(json_extract(products, '$[0].quantity') AS INTEGER)) as total_revenue
+      FROM siparisler
+      WHERE customer_country IS NOT NULL AND customer_country != ''
+      GROUP BY customer_country
+      ORDER BY order_count DESC
+    `).all();
+
+    res.json(orders);
+  } catch (error) {
+    console.error('Ulke dagilimi hatasi:', error);
+    res.status(500).json({ error: 'Ulke dagilimi getirilemedi' });
+  }
+});
+
+// En cok satan urunler
+app.get('/api/analytics/top-products', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT products FROM siparisler').all();
+    const productStats = {};
+
+    orders.forEach(order => {
+      const products = JSON.parse(order.products || '[]');
+      products.forEach(product => {
+        const name = product.name || 'Bilinmeyen';
+        if (!productStats[name]) {
+          productStats[name] = { quantity: 0, revenue: 0 };
+        }
+        const qty = parseInt(product.quantity) || 0;
+        const price = parseFloat(product.price) || 0;
+        productStats[name].quantity += qty;
+        productStats[name].revenue += qty * price;
+      });
+    });
+
+    const topProducts = Object.entries(productStats)
+      .map(([name, stats]) => ({ name, ...stats }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    res.json(topProducts);
+  } catch (error) {
+    console.error('Top products hatasi:', error);
+    res.status(500).json({ error: 'En cok satanlar getirilemedi' });
+  }
+});
+
+// En iyi musteriler
+app.get('/api/analytics/top-customers', (req, res) => {
+  try {
+    const orders = db.prepare(`
+      SELECT customer_name, customer_country, COUNT(*) as order_count,
+             customer_email, customer_phone
+      FROM siparisler
+      WHERE customer_name IS NOT NULL AND customer_name != ''
+      GROUP BY customer_name
+      ORDER BY order_count DESC
+      LIMIT 10
+    `).all();
+
+    res.json(orders);
+  } catch (error) {
+    console.error('Top customers hatasi:', error);
+    res.status(500).json({ error: 'En iyi musteriler getirilemedi' });
+  }
+});
+
+// Siparis tek detay getirme
+app.get('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+    res.json(order);
+  } catch (error) {
+    console.error('Siparis detay hatasi:', error);
+    res.status(500).json({ error: 'Siparis getirilemedi' });
+  }
+});
+
+// Siparis guncelle
+app.put('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  const { customer_name, customer_address, customer_country, customer_city,
+          customer_phone, customer_email, salesman, agency, guide,
+          cargo_company, cargo_tracking } = req.body;
+
+  try {
+    const result = db.prepare(`
+      UPDATE siparisler SET
+        customer_name=?, customer_address=?, customer_country=?, customer_city=?,
+        customer_phone=?, customer_email=?, salesman=?, agency=?, guide=?,
+        cargo_company=?, cargo_tracking=?
+      WHERE id=?
+    `).run(customer_name, customer_address, customer_country, customer_city,
+           customer_phone, customer_email, salesman, agency, guide,
+           cargo_company, cargo_tracking, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    res.json({ message: 'Siparis guncellendi', orderId: id });
+  } catch (error) {
+    console.error('Siparis guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Siparis guncellenemedi' });
+  }
+});
+
+// Siparis sil
+app.delete('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = db.prepare('DELETE FROM siparisler WHERE id = ?').run(id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    res.json({ message: 'Siparis silindi' });
+  } catch (error) {
+    console.error('Siparis silme hatasi:', error);
+    res.status(500).json({ error: 'Siparis silinemedi' });
+  }
+});
+
 // Server'i baslat
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
@@ -603,6 +856,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  http://localhost:${PORT}/api/register`);
   console.log(`  http://localhost:${PORT}/api/orders`);
   console.log(`  http://localhost:${PORT}/api/users`);
+  console.log(`  http://localhost:${PORT}/api/customers`);
+  console.log(`  http://localhost:${PORT}/api/products`);
+  console.log(`  http://localhost:${PORT}/api/analytics/dashboard`);
+  console.log(`  http://localhost:${PORT}/api/analytics/monthly-trends`);
   console.log('');
   console.log('Demo Giris Bilgileri:');
   console.log('  Patron: admin@test.com / 123456');

@@ -1,11 +1,15 @@
-import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Platform, Modal, Animated, Dimensions, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Platform, Modal, Animated, Dimensions, Alert, StatusBar, ActivityIndicator } from 'react-native';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+
+const { width } = Dimensions.get('window');
 
 // Konum listesi
 const LOCATIONS = [
@@ -759,7 +763,14 @@ export default function CreateOrderScreen() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Başlık */}
         <View style={styles.header}>
-          <IconSymbol name="file-document-edit" size={24} color="#00b51a" />
+          <LinearGradient
+            colors={COLORS.gradients.primary as [string, string]}
+            style={styles.headerIconBg}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <IconSymbol name="file-document-edit" size={22} color="#fff" />
+          </LinearGradient>
           <ThemedText style={styles.headerTitle}>Yeni Sipariş Oluştur</ThemedText>
         </View>
 
@@ -863,8 +874,16 @@ export default function CreateOrderScreen() {
         )}
 
         {/* Kaydet Butonu */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <ThemedText style={styles.saveButtonText}>Siparişi Kaydet</ThemedText>
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
+          <LinearGradient
+            colors={COLORS.gradients.primary as [string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.saveButtonGradient}
+          >
+            <IconSymbol name="check-circle" size={22} color="#fff" />
+            <ThemedText style={styles.saveButtonText}>Siparişi Kaydet</ThemedText>
+          </LinearGradient>
         </TouchableOpacity>
 
         {renderOverviewModal()}
@@ -879,7 +898,7 @@ export default function CreateOrderScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: COLORS.light.background,
   },
   scrollView: {
     flex: 1,
@@ -887,76 +906,82 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    padding: SPACING.base,
+    paddingVertical: SPACING.lg,
+    backgroundColor: COLORS.light.surface,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginLeft: 12,
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.light.text.primary,
+    marginLeft: SPACING.md,
+    letterSpacing: TYPOGRAPHY.letterSpacing.tight,
+  },
+  headerIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   section: {
-    marginBottom: 20,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginHorizontal: 16,
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS['2xl'],
+    marginHorizontal: SPACING.base,
     overflow: 'hidden',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...SHADOWS.md,
   },
   sectionHeader: {
-    padding: 16,
+    padding: SPACING.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#f9f9f9',
+    borderBottomColor: COLORS.light.divider,
+    backgroundColor: COLORS.light.surfaceSecondary,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
   },
   sectionContent: {
-    padding: 16,
+    padding: SPACING.base,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: SPACING.base,
   },
   label: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
+    marginBottom: SPACING.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
-    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: COLORS.light.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+    backgroundColor: COLORS.light.surface,
   },
   saveButton: {
-    backgroundColor: '#00b51a',
-    margin: 16,
-    padding: 16,
-    borderRadius: 8,
+    margin: SPACING.base,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.lg,
+  },
+  saveButtonGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    justifyContent: 'center',
+    paddingVertical: SPACING.base,
+    paddingHorizontal: SPACING.xl,
+    gap: SPACING.sm,
   },
   saveButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
   },
   modalOverlay: {
     flex: 1,
@@ -1073,16 +1098,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#00b51a',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
+    backgroundColor: COLORS.primary.accent,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginTop: SPACING.sm,
+    ...SHADOWS.sm,
   },
   addProductButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    marginLeft: SPACING.sm,
   },
   overviewOverlay: {
     flex: 1,

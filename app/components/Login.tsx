@@ -13,6 +13,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import ThemedText from './ThemedText';
 import IconSymbol from './ui/IconSymbol';
 import { useState, useEffect, useRef } from 'react';
@@ -20,7 +21,7 @@ import React from 'react';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../constants/Theme';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS, ANIMATIONS } from '../../constants/Theme';
 import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 
 const { width, height } = Dimensions.get('window');
@@ -57,9 +58,12 @@ export default function Login() {
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const logoScale = useRef(new Animated.Value(0.9)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const logoScale = useRef(new Animated.Value(0.8)).current;
+  const logoRotate = useRef(new Animated.Value(0)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
+  const formSlide = useRef(new Animated.Value(30)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Check for existing session on mount
   useEffect(() => {
@@ -71,7 +75,6 @@ export default function Login() {
       const sessionData = await AsyncStorage.getItem(SESSION_KEY);
       if (sessionData) {
         const session: UserSession = JSON.parse(sessionData);
-        // Auto-login with saved session
         router.replace({
           pathname: '/components/MainScreen',
           params: {
@@ -99,17 +102,37 @@ export default function Login() {
   };
 
   const startAnimations = () => {
+    // Start pulse animation for logo
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
     // Initial animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 800,
         useNativeDriver: true,
       }),
       Animated.spring(logoScale, {
         toValue: 1,
-        tension: 50,
-        friction: 8,
+        ...ANIMATIONS.spring.bouncy,
+        useNativeDriver: true,
+      }),
+      Animated.timing(logoRotate, {
+        toValue: 1,
+        duration: 800,
         useNativeDriver: true,
       }),
     ]).start();
@@ -119,29 +142,33 @@ export default function Login() {
       Animated.parallel([
         Animated.timing(formOpacity, {
           toValue: 1,
-          duration: 400,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.spring(formSlide, {
+          toValue: 0,
+          ...ANIMATIONS.spring.default,
           useNativeDriver: true,
         }),
         Animated.spring(slideAnim, {
           toValue: 0,
-          tension: 50,
-          friction: 8,
+          ...ANIMATIONS.spring.default,
           useNativeDriver: true,
         }),
       ]).start();
-    }, 200);
+    }, 300);
   };
 
   const animateFormSwitch = () => {
     Animated.sequence([
       Animated.timing(formOpacity, {
         toValue: 0,
-        duration: 100,
+        duration: 150,
         useNativeDriver: true,
       }),
       Animated.timing(formOpacity, {
         toValue: 1,
-        duration: 100,
+        duration: 150,
         useNativeDriver: true,
       }),
     ]).start();
@@ -169,7 +196,6 @@ export default function Login() {
         throw new Error(data.error || 'Giris basarisiz');
       }
 
-      // Save session for auto-login
       await saveSession({
         userName: data.Ad_Soyad,
         userRole: data.yetki,
@@ -253,11 +279,15 @@ export default function Login() {
     const isFocused = focusedInput === inputKey;
 
     return (
-      <View style={[
+      <Animated.View style={[
         styles.inputWrapper,
-        isFocused && styles.inputWrapperFocused
+        isFocused && styles.inputWrapperFocused,
+        { transform: [{ translateY: formSlide }] }
       ]}>
-        <View style={styles.inputIconContainer}>
+        <View style={[
+          styles.inputIconContainer,
+          isFocused && styles.inputIconContainerFocused
+        ]}>
           <IconSymbol
             name={icon}
             size={20}
@@ -288,7 +318,7 @@ export default function Login() {
             />
           </TouchableOpacity>
         )}
-      </View>
+      </Animated.View>
     );
   };
 
@@ -297,28 +327,51 @@ export default function Login() {
     return (
       <View style={styles.loadingScreen}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.primary.main} />
-        <View style={styles.loadingLogoContainer}>
-          <Image
-            source={require('../../assets/images/aicologo.png')}
-            style={styles.loadingLogo}
-            resizeMode="contain"
-          />
+        <LinearGradient
+          colors={COLORS.gradients.primary as [string, string]}
+          style={StyleSheet.absoluteFillObject}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.loadingContent}>
+          <Animated.View style={[styles.loadingLogoContainer, { transform: [{ scale: pulseAnim }] }]}>
+            <Image
+              source={require('../../assets/images/aicologo.png')}
+              style={styles.loadingLogo}
+              resizeMode="contain"
+            />
+          </Animated.View>
+          <ThemedText style={styles.loadingBrandName}>Koyuncu Hali</ThemedText>
+          <ThemedText style={styles.loadingTagline}>Siparis Takip Sistemi</ThemedText>
+          <View style={styles.loadingIndicator}>
+            <ActivityIndicator size="large" color="#FFFFFF" />
+          </View>
         </View>
-        <ThemedText style={styles.loadingBrandName}>Koyuncu Hali</ThemedText>
-        <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: SPACING.xl }} />
       </View>
     );
   }
 
+  const spin = logoRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary.main} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Clean Dark Background */}
-      <View style={styles.background}>
-        <View style={styles.backgroundTop} />
-        <View style={styles.backgroundBottom} />
-      </View>
+      {/* Background Gradient */}
+      <LinearGradient
+        colors={COLORS.gradients.primary as [string, string]}
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        {/* Decorative circles */}
+        <View style={styles.decorCircle1} />
+        <View style={styles.decorCircle2} />
+        <View style={styles.decorCircle3} />
+      </LinearGradient>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -337,15 +390,17 @@ export default function Login() {
             styles.logoSection,
             {
               opacity: fadeAnim,
-              transform: [{ scale: logoScale }]
+              transform: [{ scale: Animated.multiply(logoScale, pulseAnim) }]
             }
           ]}>
-            <View style={styles.logoContainer}>
-              <Image
-                source={require('../../assets/images/aicologo.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+            <View style={styles.logoGlow}>
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require('../../assets/images/aicologo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
 
             <ThemedText style={styles.brandName}>Koyuncu Hali</ThemedText>
@@ -367,6 +422,14 @@ export default function Login() {
                 onPress={() => { if (!isLogin) toggleMode(); }}
                 activeOpacity={0.7}
               >
+                {isLogin && (
+                  <LinearGradient
+                    colors={COLORS.gradients.primary as [string, string]}
+                    style={styles.tabActiveGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  />
+                )}
                 <ThemedText style={[styles.tabText, isLogin && styles.tabTextActive]}>
                   Giris Yap
                 </ThemedText>
@@ -376,6 +439,14 @@ export default function Login() {
                 onPress={() => { if (isLogin) toggleMode(); }}
                 activeOpacity={0.7}
               >
+                {!isLogin && (
+                  <LinearGradient
+                    colors={COLORS.gradients.primary as [string, string]}
+                    style={styles.tabActiveGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  />
+                )}
                 <ThemedText style={[styles.tabText, !isLogin && styles.tabTextActive]}>
                   Kayit Ol
                 </ThemedText>
@@ -446,29 +517,34 @@ export default function Login() {
               disabled={isLoading}
               activeOpacity={0.8}
             >
-              {isLoading ? (
-                <View style={styles.loadingContainer}>
-                  <View style={styles.loadingDot} />
-                  <View style={[styles.loadingDot, styles.loadingDot2]} />
-                  <View style={[styles.loadingDot, styles.loadingDot3]} />
-                </View>
-              ) : (
-                <>
-                  <ThemedText style={styles.submitButtonText}>
-                    {isLogin ? 'Giris Yap' : 'Kayit Ol'}
-                  </ThemedText>
-                  <IconSymbol name="arrow-right" size={20} color="#fff" />
-                </>
-              )}
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string]}
+                style={styles.submitButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <ThemedText style={styles.submitButtonText}>
+                      {isLogin ? 'Giris Yap' : 'Kayit Ol'}
+                    </ThemedText>
+                    <View style={styles.submitArrow}>
+                      <IconSymbol name="arrow-right" size={18} color="#fff" />
+                    </View>
+                  </>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
 
           {/* Footer */}
-          <View style={styles.footer}>
+          <Animated.View style={[styles.footer, { opacity: formOpacity }]}>
             <ThemedText style={styles.footerText}>2025 Koyuncu Hali</ThemedText>
-            <View style={styles.footerDivider} />
+            <View style={styles.footerDot} />
             <ThemedText style={styles.footerCredit}>AICO SOFTWARE</ThemedText>
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -478,96 +554,133 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.primary.main,
   },
-  loadingScreen: {
-    flex: 1,
-    backgroundColor: COLORS.primary.main,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingLogoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: RADIUS['2xl'],
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  loadingLogo: {
-    width: 64,
-    height: 64,
-    tintColor: '#FFFFFF',
-  },
-  loadingBrandName: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: '#FFFFFF',
-  },
-  background: {
+  backgroundGradient: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
   },
-  backgroundTop: {
-    flex: 1,
-    backgroundColor: COLORS.primary.main,
+  decorCircle1: {
+    position: 'absolute',
+    top: -100,
+    right: -100,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
-  backgroundBottom: {
+  decorCircle2: {
+    position: 'absolute',
+    top: height * 0.3,
+    left: -80,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -50,
+    right: 50,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  loadingScreen: {
     flex: 1,
-    backgroundColor: COLORS.light.backgroundSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContent: {
+    alignItems: 'center',
+  },
+  loadingLogoContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: RADIUS['3xl'],
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+    ...SHADOWS.xl,
+  },
+  loadingLogo: {
+    width: 70,
+    height: 70,
+    tintColor: '#FFFFFF',
+  },
+  loadingBrandName: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
+    letterSpacing: TYPOGRAPHY.letterSpacing.tight,
+  },
+  loadingTagline: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: SPACING.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  loadingIndicator: {
+    marginTop: SPACING['3xl'],
   },
   keyboardView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
     justifyContent: 'center',
   },
   logoSection: {
     alignItems: 'center',
-    marginBottom: SPACING['2xl'],
+    marginBottom: SPACING['3xl'],
+  },
+  logoGlow: {
+    padding: 4,
+    borderRadius: RADIUS['3xl'],
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: SPACING.lg,
   },
   logoContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: RADIUS.xl,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    width: 100,
+    height: 100,
+    borderRadius: RADIUS['2xl'],
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SPACING.base,
+    ...SHADOWS.lg,
   },
   logo: {
-    width: 56,
-    height: 56,
+    width: 60,
+    height: 60,
     tintColor: '#FFFFFF',
   },
   brandName: {
-    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontSize: TYPOGRAPHY.fontSize['4xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: '#FFFFFF',
-    letterSpacing: -0.5,
-    marginBottom: SPACING.xs,
+    letterSpacing: TYPOGRAPHY.letterSpacing.tight,
   },
   brandTagline: {
-    fontSize: TYPOGRAPHY.fontSize.md,
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: TYPOGRAPHY.fontWeight.medium,
+    marginTop: SPACING.xs,
   },
   formCard: {
     backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS['2xl'],
+    borderRadius: RADIUS['3xl'],
     padding: SPACING.xl,
-    ...SHADOWS.lg,
+    ...SHADOWS['2xl'],
   },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: COLORS.light.surfaceSecondary,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     padding: 4,
     marginBottom: SPACING.xl,
   },
@@ -575,20 +688,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: SPACING.md,
     alignItems: 'center',
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
   },
   tabActive: {
-    backgroundColor: COLORS.light.surface,
-    ...SHADOWS.sm,
+    ...SHADOWS.md,
+  },
+  tabActiveGradient: {
+    ...StyleSheet.absoluteFillObject,
   },
   tabText: {
-    fontSize: TYPOGRAPHY.fontSize.md,
-    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.tertiary,
   },
   tabTextActive: {
-    color: COLORS.primary.main,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#fff',
   },
   formFields: {
     marginBottom: SPACING.lg,
@@ -597,31 +712,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.light.surfaceSecondary,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
     marginBottom: SPACING.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.light.border,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   inputWrapperFocused: {
     borderColor: COLORS.primary.accent,
     backgroundColor: COLORS.light.surface,
+    ...SHADOWS.sm,
   },
   inputIconContainer: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: RADIUS.lg,
+  },
+  inputIconContainerFocused: {
+    backgroundColor: COLORS.primary.accent + '10',
   },
   input: {
     flex: 1,
-    height: 52,
+    height: 56,
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.primary,
     paddingRight: SPACING.base,
   },
   visibilityToggle: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -632,66 +752,58 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     color: COLORS.primary.accent,
     fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
   submitButton: {
-    backgroundColor: COLORS.primary.main,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.lg,
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
+  submitButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.base,
     paddingHorizontal: SPACING.xl,
-    gap: SPACING.sm,
-  },
-  submitButtonDisabled: {
-    opacity: 0.7,
+    gap: SPACING.md,
   },
   submitButtonText: {
     color: '#FFFFFF',
     fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
   },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  submitArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
-    gap: 6,
-    height: 24,
-  },
-  loadingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.4,
-  },
-  loadingDot2: {
-    opacity: 0.7,
-  },
-  loadingDot3: {
-    opacity: 1,
+    alignItems: 'center',
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: SPACING['2xl'],
+    marginTop: SPACING['3xl'],
     gap: SPACING.sm,
   },
   footerText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
-  footerDivider: {
+  footerDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: COLORS.primary.accent,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
   footerCredit: {
     fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary.accent,
-    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: '#fff',
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
   },
 });
