@@ -18,6 +18,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import PersonnelListScreen from './settings/PersonnelListScreen';
 import CustomersScreen from './CustomersScreen';
 import ProductsScreen from './ProductsScreen';
+import PaymentsScreen from './PaymentsScreen';
+import BranchManagementScreen from './settings/BranchManagementScreen';
+import ActivityLogsScreen from './settings/ActivityLogsScreen';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
 
@@ -46,7 +49,7 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [currentModal, setCurrentModal] = useState<'profile' | 'security' | 'help' | 'about' | 'personnel' | 'customers' | 'products' | null>(null);
+  const [currentModal, setCurrentModal] = useState<'profile' | 'security' | 'help' | 'about' | 'personnel' | 'customers' | 'products' | 'payments' | 'branches' | 'activityLogs' | null>(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -212,28 +215,71 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
         onPress: () => setCurrentModal('products'),
         color: COLORS.success.main,
       },
+      {
+        icon: 'credit-card-outline',
+        label: 'Odemeler',
+        description: 'Odeme islemleri',
+        type: 'link',
+        onPress: () => setCurrentModal('payments'),
+        color: COLORS.warning.main,
+      },
+    ],
+  };
+
+  // Branch Management section - only for Patron
+  const branchManagementSection: SettingSection = {
+    title: 'Sube Yonetimi',
+    icon: 'store',
+    items: [
+      {
+        icon: 'store-outline',
+        label: 'Subeler',
+        description: 'Sube ve magazalari yonet',
+        type: 'link',
+        onPress: () => setCurrentModal('branches'),
+        color: COLORS.primary.accent,
+      },
+    ],
+  };
+
+  // System section - activity logs for tracking
+  const systemSection: SettingSection = {
+    title: 'Sistem',
+    icon: 'clipboard-text',
+    items: [
+      {
+        icon: 'clipboard-text-clock-outline',
+        label: 'Islem Kayitlari',
+        description: 'Tum islemleri goruntule',
+        type: 'link',
+        onPress: () => setCurrentModal('activityLogs'),
+        color: COLORS.info.main,
+      },
     ],
   };
 
   const canManageData = userRole === 'Patron' || userRole === 'Operasyon Sorumlusu';
 
+  // Personnel management section
+  const personnelSection: SettingSection = {
+    title: 'Personel Yonetim',
+    icon: 'account-group',
+    items: [
+      {
+        icon: 'account-group-outline',
+        label: 'Personel Listesi',
+        description: 'Calisanlari yonet',
+        type: 'link',
+        onPress: () => setCurrentModal('personnel'),
+        color: COLORS.error.main,
+      },
+    ],
+  };
+
   const settingSections: SettingSection[] = userRole === 'Patron'
-    ? [...baseSettingSections, dataManagementSection, {
-        title: 'Personel Yonetim',
-        icon: 'account-group',
-        items: [
-          {
-            icon: 'account-group-outline',
-            label: 'Personel Listesi',
-            description: 'Calisanlari yonet',
-            type: 'link',
-            onPress: () => setCurrentModal('personnel'),
-            color: COLORS.error.main,
-          },
-        ],
-      }]
+    ? [...baseSettingSections, dataManagementSection, branchManagementSection, personnelSection, systemSection]
     : canManageData
-      ? [...baseSettingSections, dataManagementSection]
+      ? [...baseSettingSections, dataManagementSection, systemSection]
       : baseSettingSections;
 
   const renderSettingItem = (item: SettingItem, index: number, isLast: boolean) => (
@@ -384,6 +430,30 @@ export default function SettingsScreen({ userRole }: SettingsScreenProps) {
         presentationStyle="fullScreen"
       >
         <ProductsScreen onClose={() => setCurrentModal(null)} />
+      </Modal>
+
+      <Modal
+        visible={currentModal === 'payments'}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <PaymentsScreen onBack={() => setCurrentModal(null)} currentUser={{ role: userRole }} />
+      </Modal>
+
+      <Modal
+        visible={currentModal === 'branches'}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <BranchManagementScreen onBack={() => setCurrentModal(null)} currentUser={{ role: userRole }} />
+      </Modal>
+
+      <Modal
+        visible={currentModal === 'activityLogs'}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <ActivityLogsScreen onBack={() => setCurrentModal(null)} currentUser={{ role: userRole }} />
       </Modal>
     </>
   );
