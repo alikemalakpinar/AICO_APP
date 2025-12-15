@@ -149,7 +149,13 @@ const STEPS = [
   { id: 4, title: 'Müşteri', icon: 'account-outline' },
 ];
 
-export default function CreateOrderScreen() {
+interface CreateOrderScreenProps {
+  userBranchId?: number | null;
+  userBranchName?: string;
+  userRole?: string;
+}
+
+export default function CreateOrderScreen({ userBranchId, userBranchName, userRole }: CreateOrderScreenProps) {
   const insets = useSafeAreaInsets();
   const [currentStep, setCurrentStep] = useState(1);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
@@ -212,10 +218,24 @@ export default function CreateOrderScreen() {
     },
   });
 
+  // Yönetici rolleri - bu roller şube seçimi yapabilir
+  const isAdminRole = userRole === 'Patron' || userRole === 'Operasyon Sorumlusu';
+
   useEffect(() => {
     fetchExchangeRates();
     fetchBranches();
   }, []);
+
+  // Kullanıcı zaten bir şubeyle giriş yaptıysa otomatik şube seçimi yap
+  useEffect(() => {
+    if (userBranchId && userBranchName && !isAdminRole) {
+      setFormData(prev => ({
+        ...prev,
+        branchId: userBranchId,
+        branchName: userBranchName
+      }));
+    }
+  }, [userBranchId, userBranchName, isAdminRole]);
 
   useEffect(() => {
     Animated.timing(progressAnim, {
@@ -386,6 +406,12 @@ export default function CreateOrderScreen() {
 
   // Sonraki adıma geç
   const nextStep = () => {
+    // Step 1 validasyonu - şube seçilmiş olmalı
+    if (currentStep === 1 && !formData.branchId) {
+      Alert.alert('Uyarı', 'Lütfen devam etmeden önce bir şube seçin.');
+      return;
+    }
+
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -493,7 +519,21 @@ export default function CreateOrderScreen() {
         </View>
       </View>
 
-      {renderSelect('Şube', formData.branchName, () => setShowBranchPicker(true), 'Şube seçiniz...')}
+      {/* Satış kullanıcıları için şube otomatik seçilir ve değiştirilemez */}
+      {userBranchId && !isAdminRole ? (
+        <View style={styles.inputContainer}>
+          <ThemedText style={styles.inputLabel}>Şube</ThemedText>
+          <View style={[styles.selectInput, { backgroundColor: COLORS.light.surfaceSecondary }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              <IconSymbol name="store" size={20} color={COLORS.primary.accent} />
+              <ThemedText style={styles.selectText}>{formData.branchName}</ThemedText>
+            </View>
+            <IconSymbol name="lock" size={16} color={COLORS.neutral[400]} />
+          </View>
+        </View>
+      ) : (
+        renderSelect('Şube', formData.branchName, () => setShowBranchPicker(true), 'Şube seçiniz...')
+      )}
 
       {/* Döviz Kurları */}
       <View style={styles.exchangeCard}>
