@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   StatusBar,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useState, useRef, useEffect } from 'react';
@@ -63,6 +64,8 @@ interface TabItem {
 export default function MainScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const isTablet = screenWidth >= 600;
   const { userName, userRole, permissions: permissionsStr, branchId, branchName } = useLocalSearchParams();
   const permissions = permissionsStr ? JSON.parse(permissionsStr as string) : [];
   const userBranchId = branchId ? parseInt(branchId as string) : null;
@@ -138,13 +141,16 @@ export default function MainScreen() {
     }
   };
 
+  // Calculate navbar width - max 600 on tablets
+  const navbarWidth = isTablet ? Math.min(screenWidth - 32, 600) : screenWidth - 32;
+  const tabWidthCalc = navbarWidth / tabs.length;
+
   const handleTabPress = (index: number) => {
     if (index === activeTab) return;
 
     // Move indicator
-    const tabWidth = (width - 32) / tabs.length;
     Animated.spring(indicatorPosition, {
-      toValue: index * tabWidth,
+      toValue: index * tabWidthCalc,
       tension: 60,
       friction: 8,
       useNativeDriver: true,
@@ -209,8 +215,6 @@ export default function MainScreen() {
     }
   };
 
-  const tabWidth = (width - 32) / tabs.length;
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.light.background} />
@@ -270,14 +274,21 @@ export default function MainScreen() {
       </View>
 
       {/* Clean Bottom Navigation */}
-      <View style={[styles.navWrapper, { paddingBottom: insets.bottom || 10 }]}>
-        <View style={styles.navbar}>
+      <View style={[
+        styles.navWrapper,
+        { paddingBottom: insets.bottom || 10 },
+        isTablet && { paddingHorizontal: (screenWidth - navbarWidth - 32) / 2 }
+      ]}>
+        <View style={[
+          styles.navbar,
+          isTablet && { maxWidth: navbarWidth + 32, alignSelf: 'center' }
+        ]}>
           {/* Sliding Indicator */}
           <Animated.View
             style={[
               styles.indicator,
               {
-                width: tabWidth - 12,
+                width: tabWidthCalc - 12,
                 transform: [{ translateX: Animated.add(indicatorPosition, 6) }]
               }
             ]}
@@ -290,19 +301,20 @@ export default function MainScreen() {
             return (
               <TouchableOpacity
                 key={index}
-                style={[styles.tabButton, { width: tabWidth }]}
+                style={[styles.tabButton, { width: tabWidthCalc }]}
                 onPress={() => handleTabPress(index)}
                 activeOpacity={0.7}
               >
                 <View style={styles.tabContent}>
                   <IconSymbol
                     name={isActive ? tab.iconFilled : tab.icon}
-                    size={22}
+                    size={isTablet ? 26 : 22}
                     color={isActive ? '#FFFFFF' : COLORS.light.text.tertiary}
                   />
                   <ThemedText style={[
                     styles.tabLabel,
-                    isActive ? styles.tabLabelActive : styles.tabLabelInactive
+                    isActive ? styles.tabLabelActive : styles.tabLabelInactive,
+                    isTablet && { fontSize: TYPOGRAPHY.fontSize.sm }
                   ]}>
                     {tab.label}
                   </ThemedText>
