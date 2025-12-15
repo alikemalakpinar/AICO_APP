@@ -63,8 +63,10 @@ interface TabItem {
 export default function MainScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const insets = useSafeAreaInsets();
-  const { userName, userRole, permissions: permissionsStr } = useLocalSearchParams();
+  const { userName, userRole, permissions: permissionsStr, branchId, branchName } = useLocalSearchParams();
   const permissions = permissionsStr ? JSON.parse(permissionsStr as string) : [];
+  const userBranchId = branchId ? parseInt(branchId as string) : null;
+  const userBranchName = branchName as string || '';
 
   // Animation refs
   const indicatorPosition = useRef(new Animated.Value(0)).current;
@@ -124,7 +126,7 @@ export default function MainScreen() {
       case 'Ana Sayfa':
         return <HomeScreen onTabChange={handleTabPress} userName={userName as string} userRole={userRole as string} permissions={permissions} canCreateOrder={canCreateOrder} />;
       case 'Siparis':
-        return <CreateOrderScreen />;
+        return <CreateOrderScreen userBranchId={userBranchId} userBranchName={userBranchName} userRole={userRole as string} />;
       case 'Siparisler':
         return <OrdersScreen />;
       case 'Takvim':
