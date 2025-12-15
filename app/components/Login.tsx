@@ -12,7 +12,6 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
-  Modal,
   FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,37 +31,48 @@ const SESSION_KEY = 'user_session';
 interface Branch {
   id: number;
   name: string;
+  code: string;
   address: string;
+  city: string;
   is_active: boolean;
 }
 
+interface Employee {
+  id: number;
+  Ad_Soyad: string;
+  email: string;
+  yetki: string;
+  avatar: string;
+}
+
 interface UserSession {
+  userId?: number;
   userName: string;
   userRole: string;
   permissions: string[];
   email: string;
   branchId?: number;
   branchName?: string;
+  loginType: 'sales' | 'management';
 }
 
 export default function Login() {
+  // Main tab state: 'sales' or 'management'
+  const [activeTab, setActiveTab] = useState<'sales' | 'management'>('sales');
+
+  // Sales login states
+  const [salesStep, setSalesStep] = useState<1 | 2 | 3>(1); // 1: branch, 2: employee, 3: password
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [salesPassword, setSalesPassword] = useState('');
+
+  // Management login states (email + password)
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
-  const [focusedInput, setFocusedInput] = useState<string | null>(null);
-  const [showBranchSelector, setShowBranchSelector] = useState(false);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
-  const [pendingUserData, setPendingUserData] = useState<any>(null);
-  const insets = useSafeAreaInsets();
-
-  const [loginData, setLoginData] = useState({
-    email: '',
-    sifre: ''
-  });
-
+  const [loginData, setLoginData] = useState({ email: '', sifre: '' });
   const [formData, setFormData] = useState({
     Ad_Soyad: '',
     email: '',
@@ -71,19 +81,29 @@ export default function Login() {
     sifre_tekrar: ''
   });
 
+  // Common states
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
-  const logoRotate = useRef(new Animated.Value(0)).current;
   const formOpacity = useRef(new Animated.Value(0)).current;
   const formSlide = useRef(new Animated.Value(30)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Check for existing session on mount
   useEffect(() => {
     checkExistingSession();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'sales' && salesStep === 1) {
+      fetchBranches();
+    }
+  }, [activeTab]);
 
   const checkExistingSession = async () => {
     try {
@@ -95,7 +115,9 @@ export default function Login() {
           params: {
             userName: session.userName,
             userRole: session.userRole,
-            permissions: JSON.stringify(session.permissions)
+            permissions: JSON.stringify(session.permissions),
+            branchId: session.branchId?.toString() || '',
+            branchName: session.branchName || '',
           }
         });
         return;
@@ -105,6 +127,7 @@ export default function Login() {
     } finally {
       setIsCheckingSession(false);
       startAnimations();
+      fetchBranches();
     }
   };
 
@@ -118,51 +141,30 @@ export default function Login() {
 
   const fetchBranches = async () => {
     try {
-      const response = await fetchWithTimeout(`${API_ENDPOINTS.orders.replace('/api/orders', '/api/branches')}`, {}, 10000);
+      const response = await fetchWithTimeout(API_ENDPOINTS.branches, {}, 10000);
       const data = await response.json();
       const activeBranches = data.filter((b: Branch) => b.is_active);
       setBranches(activeBranches);
-      return activeBranches;
     } catch (error) {
       console.error('Branch fetch error:', error);
-      return [];
     }
   };
 
-  const proceedToMainScreen = async (userData: any, branch: Branch | null) => {
-    const sessionData: UserSession = {
-      userName: userData.Ad_Soyad,
-      userRole: userData.yetki,
-      permissions: userData.permissions || [],
-      email: loginData.email,
-      branchId: branch?.id,
-      branchName: branch?.name,
-    };
-
-    await saveSession(sessionData);
-
-    router.replace({
-      pathname: '/components/MainScreen',
-      params: {
-        userName: userData.Ad_Soyad,
-        userRole: userData.yetki,
-        permissions: JSON.stringify(userData.permissions),
-        branchId: branch?.id?.toString() || '',
-        branchName: branch?.name || '',
-      }
-    });
-  };
-
-  const handleBranchSelect = async (branch: Branch) => {
-    setSelectedBranch(branch);
-    setShowBranchSelector(false);
-    if (pendingUserData) {
-      await proceedToMainScreen(pendingUserData, branch);
+  const fetchBranchEmployees = async (branchId: number) => {
+    try {
+      setIsLoading(true);
+      const response = await fetchWithTimeout(API_ENDPOINTS.branchUsers(branchId), {}, 10000);
+      const data = await response.json();
+      setEmployees(data);
+    } catch (error) {
+      console.error('Employee fetch error:', error);
+      Alert.alert('Hata', 'Çalışan listesi alınamadı');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const startAnimations = () => {
-    // Start pulse animation for logo
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -178,7 +180,6 @@ export default function Login() {
       ])
     ).start();
 
-    // Initial animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -190,14 +191,8 @@ export default function Login() {
         ...ANIMATIONS.spring.bouncy,
         useNativeDriver: true,
       }),
-      Animated.timing(logoRotate, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
     ]).start();
 
-    // Form slide in
     setTimeout(() => {
       Animated.parallel([
         Animated.timing(formOpacity, {
@@ -219,24 +214,89 @@ export default function Login() {
     }, 300);
   };
 
-  const animateFormSwitch = () => {
-    Animated.sequence([
-      Animated.timing(formOpacity, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(formOpacity, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  // Sales Login Handlers
+  const handleBranchSelect = (branch: Branch) => {
+    setSelectedBranch(branch);
+    setSelectedEmployee(null);
+    setSalesPassword('');
+    setSalesStep(2);
+    fetchBranchEmployees(branch.id);
   };
 
-  const handleLogin = async () => {
+  const handleEmployeeSelect = (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setSalesPassword('');
+    setSalesStep(3);
+  };
+
+  const handleSalesLogin = async () => {
+    if (!selectedBranch || !selectedEmployee || !salesPassword) {
+      Alert.alert('Uyarı', 'Lütfen tüm alanları doldurun');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.loginSales, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch_id: selectedBranch.id,
+          user_id: selectedEmployee.id,
+          sifre: salesPassword,
+        }),
+      }, 15000);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Giriş başarısız');
+      }
+
+      await saveSession({
+        userId: data.id,
+        userName: data.Ad_Soyad,
+        userRole: data.yetki,
+        permissions: data.permissions || [],
+        email: data.email,
+        branchId: data.branch_id,
+        branchName: data.branch_name,
+        loginType: 'sales',
+      });
+
+      router.replace({
+        pathname: '/components/MainScreen',
+        params: {
+          userName: data.Ad_Soyad,
+          userRole: data.yetki,
+          permissions: JSON.stringify(data.permissions),
+          branchId: data.branch_id?.toString() || '',
+          branchName: data.branch_name || '',
+        }
+      });
+    } catch (error: any) {
+      Alert.alert('Hata', error.message || 'Giriş başarısız');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSalesBack = () => {
+    if (salesStep === 2) {
+      setSalesStep(1);
+      setSelectedBranch(null);
+      setEmployees([]);
+    } else if (salesStep === 3) {
+      setSalesStep(2);
+      setSelectedEmployee(null);
+      setSalesPassword('');
+    }
+  };
+
+  // Management Login Handlers
+  const handleManagementLogin = async () => {
     if (!loginData.email || !loginData.sifre) {
-      Alert.alert('Uyari', 'Lutfen email ve sifrenizi girin');
+      Alert.alert('Uyarı', 'Lütfen email ve şifrenizi girin');
       return;
     }
 
@@ -244,34 +304,39 @@ export default function Login() {
     try {
       const response = await fetchWithTimeout(API_ENDPOINTS.login, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(loginData),
       }, 15000);
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Giris basarisiz');
+        throw new Error(data.error || 'Giriş başarısız');
       }
 
-      // Fetch branches to see if user needs to select one
-      const availableBranches = await fetchBranches();
+      await saveSession({
+        userId: data.id,
+        userName: data.Ad_Soyad,
+        userRole: data.yetki,
+        permissions: data.permissions || [],
+        email: loginData.email,
+        branchId: data.branch_id,
+        branchName: data.branch_name,
+        loginType: 'management',
+      });
 
-      if (availableBranches.length > 1) {
-        // Multiple branches - show selector
-        setPendingUserData(data);
-        setShowBranchSelector(true);
-      } else if (availableBranches.length === 1) {
-        // Single branch - auto-select
-        await proceedToMainScreen(data, availableBranches[0]);
-      } else {
-        // No branches - proceed without branch
-        await proceedToMainScreen(data, null);
-      }
+      router.replace({
+        pathname: '/components/MainScreen',
+        params: {
+          userName: data.Ad_Soyad,
+          userRole: data.yetki,
+          permissions: JSON.stringify(data.permissions),
+          branchId: data.branch_id?.toString() || '',
+          branchName: data.branch_name || '',
+        }
+      });
     } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Sunucuya baglanilamadi. Backend calistigini kontrol edin.');
+      Alert.alert('Hata', error.message || 'Sunucuya bağlanılamadı');
     } finally {
       setIsLoading(false);
     }
@@ -279,12 +344,12 @@ export default function Login() {
 
   const handleRegister = async () => {
     if (!formData.Ad_Soyad || !formData.email || !formData.telefon || !formData.sifre || !formData.sifre_tekrar) {
-      Alert.alert('Uyari', 'Lutfen tum alanlari doldurun');
+      Alert.alert('Uyarı', 'Lütfen tüm alanları doldurun');
       return;
     }
 
     if (formData.sifre !== formData.sifre_tekrar) {
-      Alert.alert('Hata', 'Sifreler eslesmedi');
+      Alert.alert('Hata', 'Şifreler eşleşmedi');
       return;
     }
 
@@ -292,32 +357,25 @@ export default function Login() {
     try {
       const response = await fetchWithTimeout(API_ENDPOINTS.register, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       }, 15000);
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Kayit islemi basarisiz');
+        throw new Error(data.error || 'Kayıt işlemi başarısız');
       }
 
-      Alert.alert('Basarili', 'Kayit islemi basariyla tamamlandi');
+      Alert.alert('Başarılı', 'Kayıt işlemi tamamlandı');
       setIsLogin(true);
       setLoginData({ email: formData.email, sifre: '' });
       setFormData({ Ad_Soyad: '', email: '', telefon: '', sifre: '', sifre_tekrar: '' });
     } catch (error: any) {
-      Alert.alert('Hata', error.message || 'Sunucuya baglanilamadi. Backend calistigini kontrol edin.');
+      Alert.alert('Hata', error.message || 'Sunucuya bağlanılamadı');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const toggleMode = () => {
-    animateFormSwitch();
-    setIsLogin(!isLogin);
   };
 
   const renderInput = (
@@ -381,7 +439,314 @@ export default function Login() {
     );
   };
 
-  // Show loading screen while checking session
+  // Sales Tab Content
+  const renderSalesContent = () => {
+    if (salesStep === 1) {
+      return (
+        <View style={styles.salesStepContainer}>
+          <View style={styles.stepHeader}>
+            <View style={styles.stepBadge}>
+              <ThemedText style={styles.stepBadgeText}>1</ThemedText>
+            </View>
+            <ThemedText style={styles.stepTitle}>Şube Seçin</ThemedText>
+          </View>
+
+          <FlatList
+            data={branches}
+            keyExtractor={(item) => item.id.toString()}
+            style={styles.branchList}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.branchItem}
+                onPress={() => handleBranchSelect(item)}
+                activeOpacity={0.7}
+              >
+                <LinearGradient
+                  colors={['#F8FAFC', '#F1F5F9']}
+                  style={styles.branchItemGradient}
+                >
+                  <View style={styles.branchIcon}>
+                    <IconSymbol name="store" size={24} color={COLORS.primary.main} />
+                  </View>
+                  <View style={styles.branchInfo}>
+                    <ThemedText style={styles.branchName}>{item.name}</ThemedText>
+                    {item.city && (
+                      <ThemedText style={styles.branchCity}>{item.city}</ThemedText>
+                    )}
+                  </View>
+                  <IconSymbol name="chevron-right" size={24} color={COLORS.neutral[400]} />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <IconSymbol name="store-off" size={48} color={COLORS.neutral[300]} />
+                <ThemedText style={styles.emptyText}>Şube bulunamadı</ThemedText>
+              </View>
+            }
+          />
+        </View>
+      );
+    }
+
+    if (salesStep === 2) {
+      return (
+        <View style={styles.salesStepContainer}>
+          <TouchableOpacity style={styles.backButton} onPress={handleSalesBack}>
+            <IconSymbol name="arrow-left" size={20} color={COLORS.primary.accent} />
+            <ThemedText style={styles.backButtonText}>Geri</ThemedText>
+          </TouchableOpacity>
+
+          <View style={styles.selectedBranchBadge}>
+            <IconSymbol name="store" size={16} color={COLORS.primary.main} />
+            <ThemedText style={styles.selectedBranchText}>{selectedBranch?.name}</ThemedText>
+          </View>
+
+          <View style={styles.stepHeader}>
+            <View style={styles.stepBadge}>
+              <ThemedText style={styles.stepBadgeText}>2</ThemedText>
+            </View>
+            <ThemedText style={styles.stepTitle}>Çalışan Seçin</ThemedText>
+          </View>
+
+          {isLoading ? (
+            <ActivityIndicator size="large" color={COLORS.primary.main} style={{ marginTop: 40 }} />
+          ) : (
+            <FlatList
+              data={employees}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.branchList}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.employeeItem}
+                  onPress={() => handleEmployeeSelect(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.employeeAvatar}>
+                    <ThemedText style={styles.employeeAvatarText}>
+                      {item.Ad_Soyad.charAt(0).toUpperCase()}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.employeeInfo}>
+                    <ThemedText style={styles.employeeName}>{item.Ad_Soyad}</ThemedText>
+                    <ThemedText style={styles.employeeRole}>{item.yetki}</ThemedText>
+                  </View>
+                  <IconSymbol name="chevron-right" size={24} color={COLORS.neutral[400]} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <IconSymbol name="account-off" size={48} color={COLORS.neutral[300]} />
+                  <ThemedText style={styles.emptyText}>Bu şubede çalışan bulunamadı</ThemedText>
+                </View>
+              }
+            />
+          )}
+        </View>
+      );
+    }
+
+    // Step 3: Password
+    return (
+      <View style={styles.salesStepContainer}>
+        <TouchableOpacity style={styles.backButton} onPress={handleSalesBack}>
+          <IconSymbol name="arrow-left" size={20} color={COLORS.primary.accent} />
+          <ThemedText style={styles.backButtonText}>Geri</ThemedText>
+        </TouchableOpacity>
+
+        <View style={styles.selectedInfoContainer}>
+          <View style={styles.selectedBranchBadge}>
+            <IconSymbol name="store" size={16} color={COLORS.primary.main} />
+            <ThemedText style={styles.selectedBranchText}>{selectedBranch?.name}</ThemedText>
+          </View>
+          <View style={[styles.selectedBranchBadge, { backgroundColor: COLORS.success.muted }]}>
+            <IconSymbol name="account" size={16} color={COLORS.success.main} />
+            <ThemedText style={[styles.selectedBranchText, { color: COLORS.success.main }]}>
+              {selectedEmployee?.Ad_Soyad}
+            </ThemedText>
+          </View>
+        </View>
+
+        <View style={styles.stepHeader}>
+          <View style={styles.stepBadge}>
+            <ThemedText style={styles.stepBadgeText}>3</ThemedText>
+          </View>
+          <ThemedText style={styles.stepTitle}>Şifre Girin</ThemedText>
+        </View>
+
+        <View style={styles.passwordContainer}>
+          {renderInput('lock', 'Şifrenizi girin', salesPassword,
+            setSalesPassword, 'sales-password',
+            {
+              secureTextEntry: true,
+              showToggle: true,
+              isVisible: showPassword,
+              onToggleVisibility: () => setShowPassword(!showPassword)
+            }
+          )}
+
+          <TouchableOpacity
+            style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+            onPress={handleSalesLogin}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={COLORS.gradients.primary as [string, string]}
+              style={styles.submitButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <ThemedText style={styles.submitButtonText}>Giriş Yap</ThemedText>
+                  <View style={styles.submitArrow}>
+                    <IconSymbol name="arrow-right" size={18} color="#fff" />
+                  </View>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Management Tab Content
+  const renderManagementContent = () => {
+    return (
+      <View style={styles.managementContainer}>
+        {/* Sub-tabs for Login/Register */}
+        <View style={styles.subTabContainer}>
+          <TouchableOpacity
+            style={[styles.subTab, isLogin && styles.subTabActive]}
+            onPress={() => setIsLogin(true)}
+            activeOpacity={0.7}
+          >
+            {isLogin && (
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string]}
+                style={styles.subTabActiveGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              />
+            )}
+            <ThemedText style={[styles.subTabText, isLogin && styles.subTabTextActive]}>
+              Giriş Yap
+            </ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.subTab, !isLogin && styles.subTabActive]}
+            onPress={() => setIsLogin(false)}
+            activeOpacity={0.7}
+          >
+            {!isLogin && (
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string]}
+                style={styles.subTabActiveGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              />
+            )}
+            <ThemedText style={[styles.subTabText, !isLogin && styles.subTabTextActive]}>
+              Kayıt Ol
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+
+        {/* Form Fields */}
+        <View style={styles.formFields}>
+          {isLogin ? (
+            <>
+              {renderInput('email', 'E-posta adresi', loginData.email,
+                (text) => setLoginData({...loginData, email: text}), 'login-email',
+                { keyboardType: 'email-address', autoCapitalize: 'none' }
+              )}
+              {renderInput('lock', 'Şifre', loginData.sifre,
+                (text) => setLoginData({...loginData, sifre: text}), 'login-password',
+                {
+                  secureTextEntry: true,
+                  showToggle: true,
+                  isVisible: showPassword,
+                  onToggleVisibility: () => setShowPassword(!showPassword)
+                }
+              )}
+
+              <TouchableOpacity style={styles.forgotPassword}>
+                <ThemedText style={styles.forgotPasswordText}>Şifremi Unuttum</ThemedText>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              {renderInput('account', 'Ad Soyad', formData.Ad_Soyad,
+                (text) => setFormData({...formData, Ad_Soyad: text}), 'reg-name'
+              )}
+              {renderInput('email', 'E-posta adresi', formData.email,
+                (text) => setFormData({...formData, email: text}), 'reg-email',
+                { keyboardType: 'email-address', autoCapitalize: 'none' }
+              )}
+              {renderInput('phone', 'Telefon', formData.telefon,
+                (text) => setFormData({...formData, telefon: text}), 'reg-phone',
+                { keyboardType: 'phone-pad' }
+              )}
+              {renderInput('lock', 'Şifre', formData.sifre,
+                (text) => setFormData({...formData, sifre: text}), 'reg-password',
+                {
+                  secureTextEntry: true,
+                  showToggle: true,
+                  isVisible: showPassword,
+                  onToggleVisibility: () => setShowPassword(!showPassword)
+                }
+              )}
+              {renderInput('lock-check', 'Şifre Tekrar', formData.sifre_tekrar,
+                (text) => setFormData({...formData, sifre_tekrar: text}), 'reg-confirm',
+                {
+                  secureTextEntry: true,
+                  showToggle: true,
+                  isVisible: showConfirmPassword,
+                  onToggleVisibility: () => setShowConfirmPassword(!showConfirmPassword)
+                }
+              )}
+            </>
+          )}
+        </View>
+
+        {/* Submit Button */}
+        <TouchableOpacity
+          style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+          onPress={isLogin ? handleManagementLogin : handleRegister}
+          disabled={isLoading}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={COLORS.gradients.primary as [string, string]}
+            style={styles.submitButtonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <ThemedText style={styles.submitButtonText}>
+                  {isLogin ? 'Giriş Yap' : 'Kayıt Ol'}
+                </ThemedText>
+                <View style={styles.submitArrow}>
+                  <IconSymbol name="arrow-right" size={18} color="#fff" />
+                </View>
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Loading screen
   if (isCheckingSession) {
     return (
       <View style={styles.loadingScreen}>
@@ -400,8 +765,8 @@ export default function Login() {
               resizeMode="contain"
             />
           </Animated.View>
-          <ThemedText style={styles.loadingBrandName}>Koyuncu Hali</ThemedText>
-          <ThemedText style={styles.loadingTagline}>Siparis Takip Sistemi</ThemedText>
+          <ThemedText style={styles.loadingBrandName}>Koyuncu Halı</ThemedText>
+          <ThemedText style={styles.loadingTagline}>Sipariş Takip Sistemi</ThemedText>
           <View style={styles.loadingIndicator}>
             <ActivityIndicator size="large" color="#FFFFFF" />
           </View>
@@ -409,11 +774,6 @@ export default function Login() {
       </View>
     );
   }
-
-  const spin = logoRotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg']
-  });
 
   return (
     <View style={styles.container}>
@@ -426,7 +786,6 @@ export default function Login() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Decorative circles */}
         <View style={styles.decorCircle1} />
         <View style={styles.decorCircle2} />
         <View style={styles.decorCircle3} />
@@ -439,7 +798,7 @@ export default function Login() {
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20 }
+            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -462,8 +821,8 @@ export default function Login() {
               </View>
             </View>
 
-            <ThemedText style={styles.brandName}>Koyuncu Hali</ThemedText>
-            <ThemedText style={styles.brandTagline}>Siparis Takip Sistemi</ThemedText>
+            <ThemedText style={styles.brandName}>Koyuncu Halı</ThemedText>
+            <ThemedText style={styles.brandTagline}>Sipariş Takip Sistemi</ThemedText>
           </Animated.View>
 
           {/* Form Card */}
@@ -474,212 +833,78 @@ export default function Login() {
               transform: [{ translateY: slideAnim }]
             }
           ]}>
-            {/* Tab Switcher */}
-            <View style={styles.tabContainer}>
+            {/* Main Tab Switcher: Sales / Management */}
+            <View style={styles.mainTabContainer}>
               <TouchableOpacity
-                style={[styles.tab, isLogin && styles.tabActive]}
-                onPress={() => { if (!isLogin) toggleMode(); }}
+                style={[styles.mainTab, activeTab === 'sales' && styles.mainTabActive]}
+                onPress={() => {
+                  setActiveTab('sales');
+                  setSalesStep(1);
+                  setSelectedBranch(null);
+                  setSelectedEmployee(null);
+                }}
                 activeOpacity={0.7}
               >
-                {isLogin && (
+                <IconSymbol
+                  name="cart"
+                  size={20}
+                  color={activeTab === 'sales' ? '#fff' : COLORS.neutral[400]}
+                />
+                <ThemedText style={[
+                  styles.mainTabText,
+                  activeTab === 'sales' && styles.mainTabTextActive
+                ]}>
+                  Satış
+                </ThemedText>
+                {activeTab === 'sales' && (
                   <LinearGradient
                     colors={COLORS.gradients.primary as [string, string]}
-                    style={styles.tabActiveGradient}
+                    style={styles.mainTabActiveGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   />
                 )}
-                <ThemedText style={[styles.tabText, isLogin && styles.tabTextActive]}>
-                  Giris Yap
-                </ThemedText>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={[styles.tab, !isLogin && styles.tabActive]}
-                onPress={() => { if (isLogin) toggleMode(); }}
+                style={[styles.mainTab, activeTab === 'management' && styles.mainTabActive]}
+                onPress={() => setActiveTab('management')}
                 activeOpacity={0.7}
               >
-                {!isLogin && (
+                <IconSymbol
+                  name="cog"
+                  size={20}
+                  color={activeTab === 'management' ? '#fff' : COLORS.neutral[400]}
+                />
+                <ThemedText style={[
+                  styles.mainTabText,
+                  activeTab === 'management' && styles.mainTabTextActive
+                ]}>
+                  Yönetim
+                </ThemedText>
+                {activeTab === 'management' && (
                   <LinearGradient
                     colors={COLORS.gradients.primary as [string, string]}
-                    style={styles.tabActiveGradient}
+                    style={styles.mainTabActiveGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   />
                 )}
-                <ThemedText style={[styles.tabText, !isLogin && styles.tabTextActive]}>
-                  Kayit Ol
-                </ThemedText>
               </TouchableOpacity>
             </View>
 
-            {/* Form Fields */}
-            <View style={styles.formFields}>
-              {isLogin ? (
-                <>
-                  {renderInput('email', 'E-posta adresi', loginData.email,
-                    (text) => setLoginData({...loginData, email: text}), 'login-email',
-                    { keyboardType: 'email-address', autoCapitalize: 'none' }
-                  )}
-                  {renderInput('lock', 'Sifre', loginData.sifre,
-                    (text) => setLoginData({...loginData, sifre: text}), 'login-password',
-                    {
-                      secureTextEntry: true,
-                      showToggle: true,
-                      isVisible: showPassword,
-                      onToggleVisibility: () => setShowPassword(!showPassword)
-                    }
-                  )}
-
-                  <TouchableOpacity style={styles.forgotPassword}>
-                    <ThemedText style={styles.forgotPasswordText}>Sifremi Unuttum</ThemedText>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  {renderInput('account', 'Ad Soyad', formData.Ad_Soyad,
-                    (text) => setFormData({...formData, Ad_Soyad: text}), 'reg-name'
-                  )}
-                  {renderInput('email', 'E-posta adresi', formData.email,
-                    (text) => setFormData({...formData, email: text}), 'reg-email',
-                    { keyboardType: 'email-address', autoCapitalize: 'none' }
-                  )}
-                  {renderInput('phone', 'Telefon', formData.telefon,
-                    (text) => setFormData({...formData, telefon: text}), 'reg-phone',
-                    { keyboardType: 'phone-pad' }
-                  )}
-                  {renderInput('lock', 'Sifre', formData.sifre,
-                    (text) => setFormData({...formData, sifre: text}), 'reg-password',
-                    {
-                      secureTextEntry: true,
-                      showToggle: true,
-                      isVisible: showPassword,
-                      onToggleVisibility: () => setShowPassword(!showPassword)
-                    }
-                  )}
-                  {renderInput('lock-check', 'Sifre Tekrar', formData.sifre_tekrar,
-                    (text) => setFormData({...formData, sifre_tekrar: text}), 'reg-confirm',
-                    {
-                      secureTextEntry: true,
-                      showToggle: true,
-                      isVisible: showConfirmPassword,
-                      onToggleVisibility: () => setShowConfirmPassword(!showConfirmPassword)
-                    }
-                  )}
-                </>
-              )}
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-              style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
-              onPress={isLogin ? handleLogin : handleRegister}
-              disabled={isLoading}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={COLORS.gradients.primary as [string, string]}
-                style={styles.submitButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <ThemedText style={styles.submitButtonText}>
-                      {isLogin ? 'Giris Yap' : 'Kayit Ol'}
-                    </ThemedText>
-                    <View style={styles.submitArrow}>
-                      <IconSymbol name="arrow-right" size={18} color="#fff" />
-                    </View>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+            {/* Content based on active tab */}
+            {activeTab === 'sales' ? renderSalesContent() : renderManagementContent()}
           </Animated.View>
 
           {/* Footer */}
           <Animated.View style={[styles.footer, { opacity: formOpacity }]}>
-            <ThemedText style={styles.footerText}>2025 Koyuncu Hali</ThemedText>
+            <ThemedText style={styles.footerText}>2025 Koyuncu Halı</ThemedText>
             <View style={styles.footerDot} />
             <ThemedText style={styles.footerCredit}>AICO SOFTWARE</ThemedText>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Branch Selection Modal */}
-      <Modal
-        visible={showBranchSelector}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowBranchSelector(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.branchModalContainer}>
-            <LinearGradient
-              colors={COLORS.gradients.primary as [string, string]}
-              style={styles.branchModalHeader}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <IconSymbol name="store" size={32} color="#FFFFFF" />
-              <ThemedText style={styles.branchModalTitle}>Şube Seçin</ThemedText>
-              <ThemedText style={styles.branchModalSubtitle}>
-                Çalışmak istediğiniz şubeyi seçin
-              </ThemedText>
-            </LinearGradient>
-
-            <FlatList
-              data={branches}
-              keyExtractor={(item) => item.id.toString()}
-              contentContainerStyle={styles.branchList}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.branchItem,
-                    selectedBranch?.id === item.id && styles.branchItemSelected
-                  ]}
-                  onPress={() => handleBranchSelect(item)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.branchIconContainer}>
-                    <IconSymbol
-                      name="store-outline"
-                      size={24}
-                      color={selectedBranch?.id === item.id ? COLORS.primary.main : COLORS.neutral[400]}
-                    />
-                  </View>
-                  <View style={styles.branchInfo}>
-                    <ThemedText style={styles.branchName}>{item.name}</ThemedText>
-                    {item.address && (
-                      <ThemedText style={styles.branchAddress}>{item.address}</ThemedText>
-                    )}
-                  </View>
-                  <IconSymbol
-                    name="chevron-right"
-                    size={24}
-                    color={COLORS.neutral[300]}
-                  />
-                </TouchableOpacity>
-              )}
-            />
-
-            <TouchableOpacity
-              style={styles.branchModalCloseButton}
-              onPress={() => {
-                setShowBranchSelector(false);
-                if (pendingUserData && branches.length > 0) {
-                  proceedToMainScreen(pendingUserData, branches[0]);
-                }
-              }}
-            >
-              <ThemedText style={styles.branchModalCloseText}>
-                Varsayılan ile devam et
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -765,22 +990,21 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: SPACING.xl,
-    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
   },
   logoSection: {
     alignItems: 'center',
-    marginBottom: SPACING['3xl'],
+    marginBottom: SPACING.xl,
   },
   logoGlow: {
     padding: 4,
     borderRadius: RADIUS['3xl'],
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   logoContainer: {
-    width: 100,
-    height: 100,
+    width: 80,
+    height: 80,
     borderRadius: RADIUS['2xl'],
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
@@ -788,18 +1012,18 @@ const styles = StyleSheet.create({
     ...SHADOWS.lg,
   },
   logo: {
-    width: 60,
-    height: 60,
+    width: 50,
+    height: 50,
     tintColor: '#FFFFFF',
   },
   brandName: {
-    fontSize: TYPOGRAPHY.fontSize['4xl'],
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: '#FFFFFF',
     letterSpacing: TYPOGRAPHY.letterSpacing.tight,
   },
   brandTagline: {
-    fontSize: TYPOGRAPHY.fontSize.base,
+    fontSize: TYPOGRAPHY.fontSize.sm,
     color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: TYPOGRAPHY.fontWeight.medium,
     marginTop: SPACING.xs,
@@ -807,35 +1031,220 @@ const styles = StyleSheet.create({
   formCard: {
     backgroundColor: COLORS.light.surface,
     borderRadius: RADIUS['3xl'],
-    padding: SPACING.xl,
+    padding: SPACING.lg,
     ...SHADOWS['2xl'],
+    minHeight: 400,
   },
-  tabContainer: {
+  // Main Tab Styles (Sales / Management)
+  mainTabContainer: {
     flexDirection: 'row',
     backgroundColor: COLORS.light.surfaceSecondary,
     borderRadius: RADIUS.xl,
     padding: 4,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.lg,
   },
-  tab: {
+  mainTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    gap: SPACING.sm,
+    zIndex: 1,
+  },
+  mainTabActive: {
+    ...SHADOWS.md,
+  },
+  mainTabActiveGradient: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: -1,
+  },
+  mainTabText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.tertiary,
+  },
+  mainTabTextActive: {
+    color: '#fff',
+  },
+  // Sales Steps
+  salesStepContainer: {
+    flex: 1,
+  },
+  stepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    gap: SPACING.md,
+  },
+  stepBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepBadgeText: {
+    color: '#fff',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+  },
+  stepTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  branchList: {
+    maxHeight: 280,
+  },
+  branchItem: {
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+  },
+  branchItemGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.base,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  branchIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.primary.main + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  branchInfo: {
+    flex: 1,
+  },
+  branchName: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  branchCity: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
+  },
+  employeeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.light.surfaceSecondary,
+    padding: SPACING.base,
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  employeeAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  employeeAvatarText: {
+    color: '#fff',
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+  },
+  employeeInfo: {
+    flex: 1,
+  },
+  employeeName: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  employeeRole: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING['3xl'],
+  },
+  emptyText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.tertiary,
+    marginTop: SPACING.md,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    gap: SPACING.xs,
+  },
+  backButtonText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  selectedInfoContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  selectedBranchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary.main + '15',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.xs,
+  },
+  selectedBranchText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.primary.main,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  passwordContainer: {
+    marginTop: SPACING.md,
+  },
+  // Management Styles
+  managementContainer: {
+    flex: 1,
+  },
+  subTabContainer: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.xl,
+    padding: 4,
+    marginBottom: SPACING.lg,
+  },
+  subTab: {
     flex: 1,
     paddingVertical: SPACING.md,
     alignItems: 'center',
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
   },
-  tabActive: {
+  subTabActive: {
     ...SHADOWS.md,
   },
-  tabActiveGradient: {
+  subTabActiveGradient: {
     ...StyleSheet.absoluteFillObject,
   },
-  tabText: {
+  subTabText: {
     fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.tertiary,
   },
-  tabTextActive: {
+  subTabTextActive: {
     color: '#fff',
   },
   formFields: {
@@ -891,6 +1300,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     ...SHADOWS.lg,
+    marginTop: SPACING.md,
   },
   submitButtonDisabled: {
     opacity: 0.7,
@@ -920,7 +1330,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: SPACING['3xl'],
+    marginTop: SPACING['2xl'],
     gap: SPACING.sm,
   },
   footerText: {
@@ -938,84 +1348,5 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: '#fff',
     fontWeight: TYPOGRAPHY.fontWeight.bold,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  branchModalContainer: {
-    backgroundColor: COLORS.light.surface,
-    borderTopLeftRadius: RADIUS['3xl'],
-    borderTopRightRadius: RADIUS['3xl'],
-    maxHeight: height * 0.7,
-    ...SHADOWS['2xl'],
-  },
-  branchModalHeader: {
-    padding: SPACING.xl,
-    borderTopLeftRadius: RADIUS['3xl'],
-    borderTopRightRadius: RADIUS['3xl'],
-    alignItems: 'center',
-  },
-  branchModalTitle: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: '#FFFFFF',
-    marginTop: SPACING.md,
-  },
-  branchModalSubtitle: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: SPACING.xs,
-  },
-  branchList: {
-    padding: SPACING.base,
-  },
-  branchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.light.surfaceSecondary,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.base,
-    marginBottom: SPACING.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  branchItemSelected: {
-    borderColor: COLORS.primary.main,
-    backgroundColor: COLORS.primary.main + '10',
-  },
-  branchIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.light.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  branchInfo: {
-    flex: 1,
-  },
-  branchName: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.primary,
-    marginBottom: 2,
-  },
-  branchAddress: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
-  },
-  branchModalCloseButton: {
-    padding: SPACING.base,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.light.border,
-  },
-  branchModalCloseText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.primary.accent,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
 });

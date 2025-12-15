@@ -932,6 +932,78 @@ app.delete('/api/branches/:id', (req, res) => {
   }
 });
 
+// Subeye gore kullanici listesi
+app.get('/api/branches/:id/users', (req, res) => {
+  const { id } = req.params;
+  try {
+    const users = db.prepare(`
+      SELECT id, Ad_Soyad, email, telefon, yetki, avatar, is_active
+      FROM users
+      WHERE branch_id = ? AND is_active = 1
+      ORDER BY Ad_Soyad
+    `).all(id);
+    res.json(users);
+  } catch (error) {
+    console.error('Sube kullanicilari getirme hatasi:', error);
+    res.status(500).json({ error: 'Kullanicilar alinamadi' });
+  }
+});
+
+// Satis girisi (Sube + Kullanici + Sifre)
+app.post('/api/login/sales', async (req, res) => {
+  const { branch_id, user_id, sifre } = req.body;
+
+  try {
+    // Kullaniciyi kontrol et
+    const user = db.prepare(`
+      SELECT u.*, s.name as branch_name, s.code as branch_code
+      FROM users u
+      LEFT JOIN subeler s ON u.branch_id = s.id
+      WHERE u.id = ? AND u.branch_id = ? AND u.is_active = 1
+    `).get(user_id, branch_id);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Kullanici bu subede bulunamadi' });
+    }
+
+    // Sifre kontrolu
+    const passwordMatch = await bcrypt.compare(sifre, user.sifre);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Yanlis sifre' });
+    }
+
+    // Son giris guncelle
+    db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(new Date().toISOString(), user.id);
+
+    // Aktivite kaydi
+    logActivity(user.id, user.Ad_Soyad, 'login', 'user', user.id, user.Ad_Soyad, null, null, `Satis girisi - ${user.branch_name}`, branch_id);
+
+    // Yetkileri parse et
+    let permissions = [];
+    if (user.ek_yetkiler) {
+      try {
+        permissions = JSON.parse(user.ek_yetkiler);
+      } catch (e) {}
+    }
+
+    res.json({
+      id: user.id,
+      Ad_Soyad: user.Ad_Soyad,
+      email: user.email,
+      telefon: user.telefon,
+      yetki: user.yetki,
+      permissions,
+      branch_id: user.branch_id,
+      branch_name: user.branch_name,
+      branch_code: user.branch_code,
+      avatar: user.avatar,
+    });
+  } catch (error) {
+    console.error('Satis girisi hatasi:', error);
+    res.status(500).json({ error: 'Giris basarisiz' });
+  }
+});
+
 // ==================== CUSTOMERS ====================
 
 // Tum musterileri getir

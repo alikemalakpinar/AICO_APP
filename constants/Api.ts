@@ -29,6 +29,7 @@ export const API_BASE_URL = getBaseUrl();
 export const API_ENDPOINTS = {
   // Auth
   login: `${API_BASE_URL}/api/login`,
+  loginSales: `${API_BASE_URL}/api/login/sales`,
   register: `${API_BASE_URL}/api/register`,
   // Core
   orders: `${API_BASE_URL}/api/orders`,
@@ -36,6 +37,19 @@ export const API_ENDPOINTS = {
   customers: `${API_BASE_URL}/api/customers`,
   customersSearch: `${API_BASE_URL}/api/customers/search`,
   products: `${API_BASE_URL}/api/products`,
+  // Branches
+  branches: `${API_BASE_URL}/api/branches`,
+  branchUsers: (branchId: number) => `${API_BASE_URL}/api/branches/${branchId}/users`,
+  // Payments
+  payments: `${API_BASE_URL}/api/payments`,
+  // Exchange Rates
+  exchangeRates: `${API_BASE_URL}/api/exchange-rates`,
+  // Activity Logs
+  activityLogs: `${API_BASE_URL}/api/activity-logs`,
+  // Notifications
+  notifications: `${API_BASE_URL}/api/notifications`,
+  // Utils
+  countryCodes: `${API_BASE_URL}/api/utils/country-codes`,
   // Analytics
   analyticsDashboard: `${API_BASE_URL}/api/analytics/dashboard`,
   analyticsMonthlyTrends: `${API_BASE_URL}/api/analytics/monthly-trends`,

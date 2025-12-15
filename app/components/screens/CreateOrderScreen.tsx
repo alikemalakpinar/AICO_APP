@@ -11,6 +11,50 @@ import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants
 
 const { width } = Dimensions.get('window');
 
+// Para birimleri
+const CURRENCIES = [
+  { code: 'USD', symbol: '$', name: 'ABD Doları' },
+  { code: 'TRY', symbol: '₺', name: 'Türk Lirası' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'İngiliz Sterlini' },
+];
+
+// Ülke telefon kodları
+const COUNTRY_PHONE_CODES: { [key: string]: string } = {
+  'Amerika Birleşik Devletleri': '+1',
+  'Polonya': '+48',
+  'Almanya': '+49',
+  'Fransa': '+33',
+  'İtalya': '+39',
+  'İspanya': '+34',
+  'İngiltere': '+44',
+  'Hollanda': '+31',
+  'Belçika': '+32',
+  'İsveç': '+46',
+  'Norveç': '+47',
+  'Danimarka': '+45',
+  'Finlandiya': '+358',
+  'Rusya': '+7',
+  'Ukrayna': '+380',
+  'Çek Cumhuriyeti': '+420',
+  'Avusturya': '+43',
+  'İsviçre': '+41',
+  'Portekiz': '+351',
+  'Yunanistan': '+30',
+  'Macaristan': '+36',
+  'Romanya': '+40',
+  'Bulgaristan': '+359',
+  'Hırvatistan': '+385',
+  'Sırbistan': '+381',
+  'Türkiye': '+90',
+};
+
+interface ExchangeRate {
+  currency: string;
+  rate: number;
+  updated_at: string;
+}
+
 // Konum listesi
 const LOCATIONS = [
   { id: 'IST', name: 'İstanbul' },
@@ -174,7 +218,14 @@ export default function CreateOrderScreen() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
+  const [selectedCurrency, setSelectedCurrency] = useState('USD');
+  const [isLoadingRates, setIsLoadingRates] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [savedAddresses, setSavedAddresses] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     orderNo: '',
@@ -213,6 +264,168 @@ export default function CreateOrderScreen() {
   const availableCities = useMemo(() => {
     return formData.customerInfo.country ? COUNTRIES_AND_CITIES[formData.customerInfo.country] : [];
   }, [formData.customerInfo.country]);
+
+  // Döviz kurlarını çek
+  useEffect(() => {
+    fetchExchangeRates();
+  }, []);
+
+  // Kayıtlı adresleri yükle
+  useEffect(() => {
+    loadSavedAddresses();
+  }, []);
+
+  const loadSavedAddresses = async () => {
+    try {
+      const storedAddresses = await AsyncStorage.getItem('saved_addresses');
+      if (storedAddresses) {
+        setSavedAddresses(JSON.parse(storedAddresses));
+      }
+    } catch (error) {
+      console.error('Adres yükleme hatası:', error);
+    }
+  };
+
+  const saveAddressToStorage = async (address: string) => {
+    if (!address.trim()) return;
+    try {
+      const updatedAddresses = [
+        address,
+        ...savedAddresses.filter(a => a.toLowerCase() !== address.toLowerCase())
+      ].slice(0, 20); // Son 20 adresi sakla
+      await AsyncStorage.setItem('saved_addresses', JSON.stringify(updatedAddresses));
+      setSavedAddresses(updatedAddresses);
+    } catch (error) {
+      console.error('Adres kaydetme hatası:', error);
+    }
+  };
+
+  // Adres önerileri oluştur
+  const generateAddressSuggestions = (input: string) => {
+    if (!input.trim()) {
+      // Boş inputta son kullanılan adresleri göster
+      setAddressSuggestions(savedAddresses.slice(0, 5));
+      return;
+    }
+
+    const inputLower = input.toLowerCase();
+    const suggestions: string[] = [];
+
+    // Kayıtlı adreslerden öner
+    const matchingAddresses = savedAddresses.filter(addr =>
+      addr.toLowerCase().includes(inputLower)
+    );
+    suggestions.push(...matchingAddresses.slice(0, 3));
+
+    // Seçili şehir ve ülkeye göre örnek adresler oluştur
+    const city = formData.customerInfo.city;
+    const country = formData.customerInfo.country;
+
+    if (city && !suggestions.some(s => s.includes(city))) {
+      // Şehir bazlı örnek adres önerileri
+      const streetTypes = ['Cadde', 'Sokak', 'Bulvar', 'Meydan'];
+      const streetNames = ['Ana', 'Merkez', 'Park', 'Bahçe', 'Yeşil'];
+
+      streetTypes.forEach((streetType, idx) => {
+        if (suggestions.length < 5) {
+          const suggestion = `${streetNames[idx]} ${streetType} No:${Math.floor(Math.random() * 100)}, ${city}, ${country}`;
+          if (!suggestions.includes(suggestion)) {
+            suggestions.push(suggestion);
+          }
+        }
+      });
+    }
+
+    // Input ile başlayan öneriler
+    if (suggestions.length < 5 && input.length >= 2) {
+      const commonPrefixes = [
+        `${input} Caddesi`,
+        `${input} Sokak`,
+        `${input} Mahallesi`,
+      ];
+      commonPrefixes.forEach(prefix => {
+        if (suggestions.length < 5 && !suggestions.includes(prefix)) {
+          suggestions.push(prefix);
+        }
+      });
+    }
+
+    setAddressSuggestions(suggestions.slice(0, 5));
+  };
+
+  const handleAddressChange = (text: string) => {
+    setFormData({
+      ...formData,
+      customerInfo: { ...formData.customerInfo, address: text }
+    });
+    generateAddressSuggestions(text);
+    setShowAddressSuggestions(true);
+  };
+
+  const selectAddressSuggestion = (address: string) => {
+    setFormData({
+      ...formData,
+      customerInfo: { ...formData.customerInfo, address }
+    });
+    setShowAddressSuggestions(false);
+  };
+
+  // Ülke değiştiğinde telefon kodunu otomatik ayarla
+  useEffect(() => {
+    if (formData.customerInfo.country) {
+      const phoneCode = COUNTRY_PHONE_CODES[formData.customerInfo.country] || '';
+      if (phoneCode && !formData.customerInfo.phone.startsWith(phoneCode)) {
+        setFormData(prev => ({
+          ...prev,
+          customerInfo: {
+            ...prev.customerInfo,
+            phone: phoneCode + ' '
+          }
+        }));
+      }
+    }
+  }, [formData.customerInfo.country]);
+
+  const fetchExchangeRates = async () => {
+    setIsLoadingRates(true);
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.exchangeRates, {}, 10000);
+      const data = await response.json();
+      setExchangeRates(data);
+    } catch (error) {
+      console.error('Döviz kurları alınamadı:', error);
+      // Varsayılan kurlar
+      setExchangeRates([
+        { currency: 'TRY', rate: 32.50, updated_at: new Date().toISOString() },
+        { currency: 'EUR', rate: 0.92, updated_at: new Date().toISOString() },
+        { currency: 'GBP', rate: 0.79, updated_at: new Date().toISOString() },
+      ]);
+    } finally {
+      setIsLoadingRates(false);
+    }
+  };
+
+  // USD'den seçili para birimine çevir
+  const convertFromUSD = (usdAmount: number, toCurrency: string): number => {
+    if (toCurrency === 'USD') return usdAmount;
+    const rate = exchangeRates.find(r => r.currency === toCurrency);
+    if (!rate) return usdAmount;
+    return usdAmount * rate.rate;
+  };
+
+  // Seçili para biriminden USD'ye çevir
+  const convertToUSD = (amount: number, fromCurrency: string): number => {
+    if (fromCurrency === 'USD') return amount;
+    const rate = exchangeRates.find(r => r.currency === fromCurrency);
+    if (!rate) return amount;
+    return amount / rate.rate;
+  };
+
+  // Para birimi sembolünü al
+  const getCurrencySymbol = (code: string): string => {
+    const currency = CURRENCIES.find(c => c.code === code);
+    return currency?.symbol || code;
+  };
 
   const renderPicker = (title: string, items: string[], selectedValue: string, onSelect: (value: string) => void, onClose: () => void) => (
     <Modal
@@ -285,6 +498,11 @@ export default function CreateOrderScreen() {
       // Siparişi API'ye gönder
       const result = await saveOrder(formData);
       console.log('Sipariş başarıyla kaydedildi:', result);
+
+      // Adresi gelecek kullanımlar için kaydet
+      if (formData.customerInfo.address) {
+        await saveAddressToStorage(formData.customerInfo.address);
+      }
       
       // Başarılı mesajını göster
       Alert.alert(
@@ -774,6 +992,31 @@ export default function CreateOrderScreen() {
           <ThemedText style={styles.headerTitle}>Yeni Sipariş Oluştur</ThemedText>
         </View>
 
+        {/* Döviz Kurları */}
+        <View style={styles.exchangeRateSection}>
+          <View style={styles.exchangeRateHeader}>
+            <IconSymbol name="currency-usd" size={20} color={COLORS.primary.main} />
+            <ThemedText style={styles.exchangeRateTitle}>Güncel Döviz Kurları</ThemedText>
+            <TouchableOpacity onPress={fetchExchangeRates} style={styles.refreshButton}>
+              <IconSymbol name="refresh" size={18} color={COLORS.primary.accent} />
+            </TouchableOpacity>
+          </View>
+          {isLoadingRates ? (
+            <ActivityIndicator size="small" color={COLORS.primary.main} />
+          ) : (
+            <View style={styles.exchangeRateList}>
+              {exchangeRates.map((rate) => (
+                <View key={rate.currency} style={styles.exchangeRateItem}>
+                  <ThemedText style={styles.exchangeRateCurrency}>{rate.currency}</ThemedText>
+                  <ThemedText style={styles.exchangeRateValue}>
+                    1 USD = {rate.rate.toFixed(2)} {rate.currency}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
         {/* Temel Bilgiler */}
         {renderFormSection('Temel Bilgiler', (
           <>
@@ -782,6 +1025,20 @@ export default function CreateOrderScreen() {
             {renderInput('Sipariş No', formData.orderNo,
               (text) => setFormData({ ...formData, orderNo: text }), { placeholder: 'Örn: 100926' })}
             {renderSelectInput('Konum', formData.location, () => setShowLocationPicker(true))}
+
+            {/* Para Birimi Seçici */}
+            <View style={styles.inputContainer}>
+              <ThemedText style={styles.label}>Para Birimi</ThemedText>
+              <TouchableOpacity
+                style={styles.currencySelector}
+                onPress={() => setShowCurrencyPicker(true)}
+              >
+                <ThemedText style={styles.currencyText}>
+                  {getCurrencySymbol(selectedCurrency)} {selectedCurrency}
+                </ThemedText>
+                <IconSymbol name="chevron-down" size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
           </>
         ))}
 
@@ -790,9 +1047,60 @@ export default function CreateOrderScreen() {
           <>
             {renderInput('Ad Soyad', formData.customerInfo.nameSurname,
               (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, nameSurname: text } }))}
-            {renderInput('Adres', formData.customerInfo.address,
-              (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, address: text } }),
-              { multiline: true, numberOfLines: 2 })}
+
+            {/* Adres Otomatik Tamamlama */}
+            <View style={styles.inputContainer}>
+              <ThemedText style={styles.label}>Adres</ThemedText>
+              <View style={styles.addressInputWrapper}>
+                <TextInput
+                  style={[styles.input, styles.addressInput]}
+                  value={formData.customerInfo.address}
+                  onChangeText={handleAddressChange}
+                  onFocus={() => {
+                    generateAddressSuggestions(formData.customerInfo.address);
+                    setShowAddressSuggestions(true);
+                  }}
+                  onBlur={() => setTimeout(() => setShowAddressSuggestions(false), 200)}
+                  placeholder="Adres yazın veya önerileden seçin..."
+                  placeholderTextColor="#999"
+                  multiline
+                  numberOfLines={2}
+                />
+                {showAddressSuggestions && addressSuggestions.length > 0 && (
+                  <View style={styles.suggestionsContainer}>
+                    <View style={styles.suggestionsHeader}>
+                      <IconSymbol name="map-marker" size={16} color={COLORS.primary.main} />
+                      <ThemedText style={styles.suggestionsTitle}>
+                        {savedAddresses.length > 0 ? 'Öneriler & Son Adresler' : 'Öneriler'}
+                      </ThemedText>
+                    </View>
+                    <ScrollView
+                      style={styles.suggestionsList}
+                      nestedScrollEnabled={true}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {addressSuggestions.map((suggestion, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.suggestionItem}
+                          onPress={() => selectAddressSuggestion(suggestion)}
+                        >
+                          <IconSymbol
+                            name={savedAddresses.includes(suggestion) ? 'history' : 'map-marker-outline'}
+                            size={16}
+                            color={savedAddresses.includes(suggestion) ? COLORS.info.main : COLORS.light.text.tertiary}
+                          />
+                          <ThemedText style={styles.suggestionText} numberOfLines={2}>
+                            {suggestion}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            </View>
+
             {renderInput('Posta Kodu', formData.customerInfo.zipCode,
               (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, zipCode: text } }))}
             {renderSelectInput('Ülke', formData.customerInfo.country, () => setShowCountryPicker(true))}
@@ -871,6 +1179,54 @@ export default function CreateOrderScreen() {
             }
           }),
           () => setShowCityPicker(false)
+        )}
+
+        {showCurrencyPicker && (
+          <Modal
+            visible={true}
+            transparent={true}
+            animationType="slide"
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <ThemedText style={styles.modalTitle}>Para Birimi Seçin</ThemedText>
+                  <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
+                    <IconSymbol name="close" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.modalList}>
+                  {CURRENCIES.map((currency) => (
+                    <TouchableOpacity
+                      key={currency.code}
+                      style={[
+                        styles.modalItem,
+                        selectedCurrency === currency.code && styles.modalItemSelected
+                      ]}
+                      onPress={() => {
+                        setSelectedCurrency(currency.code);
+                        setShowCurrencyPicker(false);
+                      }}
+                    >
+                      <View style={styles.currencyItemContent}>
+                        <ThemedText style={styles.currencySymbol}>{currency.symbol}</ThemedText>
+                        <View>
+                          <ThemedText style={[
+                            styles.modalItemText,
+                            selectedCurrency === currency.code && styles.modalItemTextSelected
+                          ]}>{currency.code}</ThemedText>
+                          <ThemedText style={styles.currencyName}>{currency.name}</ThemedText>
+                        </View>
+                      </View>
+                      {selectedCurrency === currency.code && (
+                        <IconSymbol name="check" size={20} color={COLORS.primary.main} />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
         )}
 
         {/* Kaydet Butonu */}
@@ -1248,5 +1604,142 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  // Exchange Rate Styles
+  exchangeRateSection: {
+    backgroundColor: COLORS.light.surface,
+    marginHorizontal: SPACING.base,
+    marginBottom: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    ...SHADOWS.sm,
+  },
+  exchangeRateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  exchangeRateTitle: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  refreshButton: {
+    padding: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary.accent + '15',
+  },
+  exchangeRateList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  exchangeRateItem: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  exchangeRateCurrency: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary.main,
+  },
+  exchangeRateValue: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
+  },
+  // Currency Selector Styles
+  currencySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1.5,
+    borderColor: COLORS.light.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    backgroundColor: COLORS.light.surface,
+  },
+  currencyText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  currencyItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    flex: 1,
+  },
+  currencySymbol: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary.main,
+    width: 30,
+    textAlign: 'center',
+  },
+  currencyName: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  // Address Autocomplete Styles
+  addressInputWrapper: {
+    position: 'relative',
+    zIndex: 100,
+  },
+  addressInput: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+    paddingTop: SPACING.md,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.lg,
+    marginTop: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+    ...SHADOWS.lg,
+    zIndex: 1000,
+    maxHeight: 200,
+  },
+  suggestionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.divider,
+    gap: SPACING.xs,
+  },
+  suggestionsTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.primary.main,
+  },
+  suggestionsList: {
+    maxHeight: 160,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.divider,
+    gap: SPACING.sm,
+  },
+  suggestionText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.primary,
   },
 }); 
