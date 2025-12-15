@@ -4,6 +4,19 @@ const bcrypt = require('bcrypt');
 const sqlite3 = require('better-sqlite3');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
+
+// Uploads klasörünü oluştur
+const uploadsDir = path.join(__dirname, 'uploads');
+const passportDir = path.join(uploadsDir, 'passports');
+const signaturesDir = path.join(uploadsDir, 'signatures');
+const documentsDir = path.join(uploadsDir, 'documents');
+
+[uploadsDir, passportDir, signaturesDir, documentsDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 const app = express();
 
@@ -12,11 +25,13 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Static dosyalar için uploads klasörünü serve et
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // SQLite veritabani baglantisi
 const dbPath = path.join(__dirname, 'database.sqlite');
 
 // Veritabani dosyasi var mi kontrol et, yoksa veya sorunluysa sil ve yeniden olustur
-const fs = require('fs');
 try {
   // Dosya varsa yazma izni kontrol et
   if (fs.existsSync(dbPath)) {
@@ -2520,8 +2535,256 @@ app.get('/api/utils/country-codes', (req, res) => {
   res.json(countryCodes);
 });
 
+// ==================== FILE UPLOAD ENDPOINTS ====================
+
+// Helper: Base64'ten dosya kaydet
+function saveBase64File(base64Data, folder, filename) {
+  try {
+    // base64 header'ı varsa kaldır
+    let data = base64Data;
+    if (data.includes(',')) {
+      data = data.split(',')[1];
+    }
+
+    const buffer = Buffer.from(data, 'base64');
+    const filePath = path.join(__dirname, 'uploads', folder, filename);
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${folder}/${filename}`;
+  } catch (error) {
+    console.error('Dosya kaydetme hatasi:', error);
+    return null;
+  }
+}
+
+// Pasaport fotoğrafı yükle
+app.post('/api/upload/passport', (req, res) => {
+  const { image_data, order_id, filename } = req.body;
+
+  try {
+    if (!image_data) {
+      return res.status(400).json({ error: 'Resim verisi gerekli' });
+    }
+
+    const ext = filename?.split('.').pop() || 'jpg';
+    const newFilename = `passport_${order_id || Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const filePath = saveBase64File(image_data, 'passports', newFilename);
+
+    if (!filePath) {
+      return res.status(500).json({ error: 'Dosya kaydedilemedi' });
+    }
+
+    // Sipariş varsa passport_image alanını güncelle
+    if (order_id) {
+      db.prepare('UPDATE siparisler SET passport_image = ? WHERE id = ?').run(filePath, order_id);
+    }
+
+    res.json({
+      message: 'Pasaport fotoğrafı yüklendi',
+      file_path: filePath,
+      full_url: `${req.protocol}://${req.get('host')}${filePath}`
+    });
+  } catch (error) {
+    console.error('Pasaport yükleme hatası:', error);
+    res.status(500).json({ error: 'Pasaport fotoğrafı yüklenemedi' });
+  }
+});
+
+// Müşteri imzası yükle
+app.post('/api/upload/signature', (req, res) => {
+  const { signature_data, order_id, filename } = req.body;
+
+  try {
+    if (!signature_data) {
+      return res.status(400).json({ error: 'İmza verisi gerekli' });
+    }
+
+    const newFilename = `signature_${order_id || Date.now()}_${crypto.randomBytes(4).toString('hex')}.png`;
+    const filePath = saveBase64File(signature_data, 'signatures', newFilename);
+
+    if (!filePath) {
+      return res.status(500).json({ error: 'Dosya kaydedilemedi' });
+    }
+
+    // Sipariş varsa customer_signature alanını güncelle
+    if (order_id) {
+      db.prepare('UPDATE siparisler SET customer_signature = ? WHERE id = ?').run(filePath, order_id);
+    }
+
+    res.json({
+      message: 'İmza kaydedildi',
+      file_path: filePath,
+      full_url: `${req.protocol}://${req.get('host')}${filePath}`
+    });
+  } catch (error) {
+    console.error('İmza kaydetme hatası:', error);
+    res.status(500).json({ error: 'İmza kaydedilemedi' });
+  }
+});
+
+// Belge yükle
+app.post('/api/upload/document', (req, res) => {
+  const { document_data, customer_id, document_type, document_name, mime_type, uploaded_by } = req.body;
+
+  try {
+    if (!document_data) {
+      return res.status(400).json({ error: 'Belge verisi gerekli' });
+    }
+
+    const ext = mime_type?.includes('png') ? 'png' : 'jpg';
+    const newFilename = `doc_${customer_id || 'unknown'}_${document_type || 'other'}_${Date.now()}.${ext}`;
+    const filePath = saveBase64File(document_data, 'documents', newFilename);
+
+    if (!filePath) {
+      return res.status(500).json({ error: 'Dosya kaydedilemedi' });
+    }
+
+    // Veritabanına kaydet
+    if (customer_id) {
+      const stmt = db.prepare(`
+        INSERT INTO musteri_belgeleri (customer_id, document_type, document_name, file_path, mime_type, uploaded_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      const result = stmt.run(customer_id, document_type, document_name || newFilename, filePath, mime_type, uploaded_by);
+
+      res.json({
+        message: 'Belge yüklendi',
+        document_id: result.lastInsertRowid,
+        file_path: filePath,
+        full_url: `${req.protocol}://${req.get('host')}${filePath}`
+      });
+    } else {
+      res.json({
+        message: 'Belge yüklendi',
+        file_path: filePath,
+        full_url: `${req.protocol}://${req.get('host')}${filePath}`
+      });
+    }
+  } catch (error) {
+    console.error('Belge yükleme hatası:', error);
+    res.status(500).json({ error: 'Belge yüklenemedi' });
+  }
+});
+
+// Siparişe pasaport fotoğrafı güncelle
+app.put('/api/orders/:id/passport', (req, res) => {
+  const { id } = req.params;
+  const { passport_image, updated_by } = req.body;
+
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Sipariş bulunamadı' });
+    }
+
+    let imagePath = passport_image;
+
+    // Eğer base64 ise dosya olarak kaydet
+    if (passport_image && passport_image.startsWith('data:')) {
+      const filename = `passport_${id}_${Date.now()}.jpg`;
+      imagePath = saveBase64File(passport_image, 'passports', filename);
+    }
+
+    db.prepare(`
+      UPDATE siparisler SET passport_image = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(imagePath, updated_by, id);
+
+    logActivity(updated_by, null, 'update_passport', 'order', id, order.order_no, null, { passport_image: true }, 'Pasaport fotoğrafı güncellendi', order.branch_id);
+
+    res.json({
+      message: 'Pasaport fotoğrafı güncellendi',
+      passport_image: imagePath
+    });
+  } catch (error) {
+    console.error('Pasaport güncelleme hatası:', error);
+    res.status(500).json({ error: 'Pasaport fotoğrafı güncellenemedi' });
+  }
+});
+
+// ==================== BARCODE SEARCH ====================
+
+// Barkod ile ürün ara (query param destekli)
+app.get('/api/products/search/barcode', (req, res) => {
+  const { code } = req.query;
+
+  try {
+    if (!code) {
+      return res.status(400).json({ error: 'Barkod kodu gerekli' });
+    }
+
+    const product = db.prepare('SELECT * FROM urunler WHERE barcode = ?').get(code);
+
+    if (product) {
+      res.json({
+        found: true,
+        product: product
+      });
+    } else {
+      res.json({
+        found: false,
+        barcode: code,
+        message: 'Bu barkod sistemde kayıtlı değil'
+      });
+    }
+  } catch (error) {
+    console.error('Barkod arama hatası:', error);
+    res.status(500).json({ error: 'Barkod araması yapılamadı' });
+  }
+});
+
+// SKU ile ürün ara
+app.get('/api/products/search/sku', (req, res) => {
+  const { code } = req.query;
+
+  try {
+    if (!code) {
+      return res.status(400).json({ error: 'SKU kodu gerekli' });
+    }
+
+    const product = db.prepare('SELECT * FROM urunler WHERE sku = ?').get(code);
+
+    if (product) {
+      res.json({
+        found: true,
+        product: product
+      });
+    } else {
+      res.json({
+        found: false,
+        sku: code,
+        message: 'Bu SKU sistemde kayıtlı değil'
+      });
+    }
+  } catch (error) {
+    console.error('SKU arama hatası:', error);
+    res.status(500).json({ error: 'SKU araması yapılamadı' });
+  }
+});
+
+// ==================== HEALTH CHECK ====================
+
+app.get('/api/health', (req, res) => {
+  try {
+    // Database kontrolü
+    const dbCheck = db.prepare('SELECT 1 as ok').get();
+
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      database: dbCheck ? 'connected' : 'error',
+      uptime: process.uptime(),
+      memory: process.memoryUsage()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message
+    });
+  }
+});
+
 // Server'i baslat
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('========================================');
