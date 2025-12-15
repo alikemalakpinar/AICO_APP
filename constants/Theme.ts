@@ -1,4 +1,4 @@
-// Premium Modern Theme - Professional Design System
+// Premium Corporate Theme - Professional Design System
 import { Dimensions, Platform } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -12,162 +12,157 @@ export const SCREEN = {
   isLarge: width >= 414,
 };
 
-// Color Palette - Modern & Vibrant Design
+// Color Palette - Corporate & Professional
 export const COLORS = {
-  // Primary Brand Colors - Premium Blue Gradient
+  // Primary Brand Colors - Deep Burgundy/Maroon
   primary: {
-    main: '#0F172A',      // Rich Dark Navy
-    light: '#1E293B',
-    dark: '#020617',
-    accent: '#3B82F6',    // Vibrant Blue
-    accentLight: '#60A5FA',
-    accentDark: '#2563EB',
-    gradient: ['#3B82F6', '#8B5CF6'], // Blue to Purple
+    main: '#1A1A2E',        // Deep Navy
+    light: '#2D2D44',
+    dark: '#0F0F1A',
+    accent: '#8B1538',      // Rich Burgundy
+    accentLight: '#A52A4A',
+    accentDark: '#6B1028',
+    gradient: ['#8B1538', '#C41E3A'], // Burgundy gradient
   },
 
   // Secondary Accent Colors
   secondary: {
-    purple: '#8B5CF6',
-    pink: '#EC4899',
-    cyan: '#06B6D4',
-    orange: '#F97316',
-    emerald: '#10B981',
+    gold: '#C9A227',        // Premium Gold
+    bronze: '#B87333',
+    silver: '#8A8A8A',
+    teal: '#2E8B8B',
+    emerald: '#2E7D32',
   },
 
-  // Neutral Grays - Sophisticated Scale
+  // Neutral Grays - Professional Scale
   neutral: {
     50: '#FAFAFA',
-    100: '#F4F4F5',
-    200: '#E4E4E7',
-    300: '#D4D4D8',
-    400: '#A1A1AA',
-    500: '#71717A',
-    600: '#52525B',
-    700: '#3F3F46',
-    800: '#27272A',
-    900: '#18181B',
-    950: '#09090B',
+    100: '#F5F5F5',
+    200: '#EEEEEE',
+    300: '#E0E0E0',
+    400: '#BDBDBD',
+    500: '#9E9E9E',
+    600: '#757575',
+    700: '#616161',
+    800: '#424242',
+    900: '#212121',
+    950: '#121212',
   },
 
-  // Status Colors - Modern & Clean
+  // Status Colors - Clean & Professional
   success: {
-    main: '#10B981',
-    light: '#34D399',
-    lighter: '#6EE7B7',
-    muted: '#D1FAE5',
-    text: '#065F46',
-    gradient: ['#10B981', '#059669'],
+    main: '#2E7D32',
+    light: '#4CAF50',
+    lighter: '#81C784',
+    muted: '#E8F5E9',
+    text: '#1B5E20',
+    gradient: ['#2E7D32', '#1B5E20'],
   },
   warning: {
-    main: '#F59E0B',
-    light: '#FBBF24',
-    lighter: '#FCD34D',
-    muted: '#FEF3C7',
-    text: '#92400E',
-    gradient: ['#F59E0B', '#D97706'],
+    main: '#F57C00',
+    light: '#FF9800',
+    lighter: '#FFB74D',
+    muted: '#FFF3E0',
+    text: '#E65100',
+    gradient: ['#F57C00', '#E65100'],
   },
   error: {
-    main: '#EF4444',
-    light: '#F87171',
-    lighter: '#FCA5A5',
-    muted: '#FEE2E2',
-    text: '#991B1B',
-    gradient: ['#EF4444', '#DC2626'],
+    main: '#C62828',
+    light: '#EF5350',
+    lighter: '#EF9A9A',
+    muted: '#FFEBEE',
+    text: '#B71C1C',
+    gradient: ['#C62828', '#B71C1C'],
   },
   info: {
-    main: '#3B82F6',
-    light: '#60A5FA',
-    lighter: '#93C5FD',
-    muted: '#DBEAFE',
-    text: '#1E40AF',
-    gradient: ['#3B82F6', '#2563EB'],
+    main: '#1565C0',
+    light: '#42A5F5',
+    lighter: '#90CAF9',
+    muted: '#E3F2FD',
+    text: '#0D47A1',
+    gradient: ['#1565C0', '#0D47A1'],
   },
 
   // Light Theme
   light: {
-    background: '#F8FAFC',
-    backgroundSecondary: '#F1F5F9',
+    background: '#F8F9FA',
+    backgroundSecondary: '#ECEFF1',
     surface: '#FFFFFF',
     surfaceElevated: '#FFFFFF',
-    surfaceSecondary: '#F1F5F9',
-    surfaceGlass: 'rgba(255, 255, 255, 0.8)',
-    border: '#E2E8F0',
-    borderLight: '#F1F5F9',
-    divider: '#E2E8F0',
+    surfaceSecondary: '#F5F5F5',
+    surfaceGlass: 'rgba(255, 255, 255, 0.95)',
+    border: '#E0E0E0',
+    borderLight: '#EEEEEE',
+    divider: '#E0E0E0',
     text: {
-      primary: '#0F172A',
-      secondary: '#475569',
-      tertiary: '#94A3B8',
-      disabled: '#CBD5E1',
+      primary: '#1A1A2E',
+      secondary: '#5C5C6D',
+      tertiary: '#9E9E9E',
+      disabled: '#BDBDBD',
       inverse: '#FFFFFF',
-      accent: '#3B82F6',
+      accent: '#8B1538',
     },
     icon: {
-      primary: '#0F172A',
-      secondary: '#64748B',
-      tertiary: '#94A3B8',
+      primary: '#1A1A2E',
+      secondary: '#757575',
+      tertiary: '#9E9E9E',
     },
-    overlay: 'rgba(15, 23, 42, 0.6)',
-    overlayLight: 'rgba(15, 23, 42, 0.3)',
+    overlay: 'rgba(26, 26, 46, 0.7)',
+    overlayLight: 'rgba(26, 26, 46, 0.4)',
   },
 
   // Dark Theme
   dark: {
-    background: '#0F172A',
-    backgroundSecondary: '#1E293B',
-    surface: '#1E293B',
-    surfaceElevated: '#334155',
-    surfaceSecondary: '#334155',
-    surfaceGlass: 'rgba(30, 41, 59, 0.8)',
-    border: '#334155',
-    borderLight: '#475569',
-    divider: '#334155',
+    background: '#1A1A2E',
+    backgroundSecondary: '#2D2D44',
+    surface: '#2D2D44',
+    surfaceElevated: '#3D3D5C',
+    surfaceSecondary: '#3D3D5C',
+    surfaceGlass: 'rgba(45, 45, 68, 0.9)',
+    border: '#3D3D5C',
+    borderLight: '#4D4D6C',
+    divider: '#3D3D5C',
     text: {
-      primary: '#F8FAFC',
-      secondary: '#CBD5E1',
-      tertiary: '#94A3B8',
-      disabled: '#64748B',
-      inverse: '#0F172A',
-      accent: '#60A5FA',
+      primary: '#FAFAFA',
+      secondary: '#BDBDBD',
+      tertiary: '#9E9E9E',
+      disabled: '#757575',
+      inverse: '#1A1A2E',
+      accent: '#E57373',
     },
     icon: {
-      primary: '#F8FAFC',
-      secondary: '#CBD5E1',
-      tertiary: '#94A3B8',
+      primary: '#FAFAFA',
+      secondary: '#BDBDBD',
+      tertiary: '#9E9E9E',
     },
-    overlay: 'rgba(0, 0, 0, 0.7)',
-    overlayLight: 'rgba(0, 0, 0, 0.5)',
+    overlay: 'rgba(0, 0, 0, 0.8)',
+    overlayLight: 'rgba(0, 0, 0, 0.6)',
   },
 
-  // Gradient Presets - Modern & Eye-catching
+  // Gradient Presets - Corporate Style
   gradients: {
-    primary: ['#3B82F6', '#8B5CF6'],
-    accent: ['#EC4899', '#F97316'],
-    success: ['#10B981', '#059669'],
-    warning: ['#F59E0B', '#D97706'],
-    error: ['#EF4444', '#DC2626'],
-    info: ['#3B82F6', '#0EA5E9'],
-    purple: ['#8B5CF6', '#A855F7'],
-    pink: ['#EC4899', '#F472B6'],
-    cyan: ['#06B6D4', '#22D3EE'],
-    dark: ['#1E293B', '#0F172A'],
-    darkReverse: ['#0F172A', '#1E293B'],
-    glass: ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.75)'],
-    glassBlue: ['rgba(59, 130, 246, 0.1)', 'rgba(139, 92, 246, 0.1)'],
-    shimmer: ['#F1F5F9', '#E2E8F0', '#F1F5F9'],
-    sunset: ['#F97316', '#EC4899'],
-    ocean: ['#0EA5E9', '#6366F1'],
-    forest: ['#10B981', '#06B6D4'],
-    midnight: ['#1E293B', '#0F172A', '#020617'],
-    premium: ['#3B82F6', '#8B5CF6', '#EC4899'],
+    primary: ['#8B1538', '#6B1028'],
+    accent: ['#C9A227', '#B87333'],
+    success: ['#2E7D32', '#1B5E20'],
+    warning: ['#F57C00', '#E65100'],
+    error: ['#C62828', '#B71C1C'],
+    info: ['#1565C0', '#0D47A1'],
+    gold: ['#C9A227', '#9C7B16'],
+    burgundy: ['#8B1538', '#C41E3A'],
+    teal: ['#2E8B8B', '#1F6E6E'],
+    dark: ['#2D2D44', '#1A1A2E'],
+    darkReverse: ['#1A1A2E', '#2D2D44'],
+    glass: ['rgba(255,255,255,0.98)', 'rgba(255,255,255,0.90)'],
+    corporate: ['#1A1A2E', '#8B1538'],
+    premium: ['#8B1538', '#C9A227'],
   },
 
   // Semantic Colors
   semantic: {
-    link: '#3B82F6',
-    focus: '#3B82F6',
-    selection: 'rgba(59, 130, 246, 0.15)',
-    highlight: 'rgba(59, 130, 246, 0.1)',
+    link: '#1565C0',
+    focus: '#8B1538',
+    selection: 'rgba(139, 21, 56, 0.15)',
+    highlight: 'rgba(139, 21, 56, 0.1)',
   },
 };
 

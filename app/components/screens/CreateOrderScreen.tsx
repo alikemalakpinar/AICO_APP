@@ -1,15 +1,27 @@
-import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Platform, Modal, Animated, Dimensions, Alert, StatusBar, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Platform, Modal, Animated, Dimensions, Alert, StatusBar, ActivityIndicator, Image } from 'react-native';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
+import { API_ENDPOINTS, fetchWithTimeout, API_BASE_URL } from '../../../constants/Api';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+
+// Ödeme yöntemleri
+const PAYMENT_METHODS = [
+  { id: 'mastercard', name: 'Mastercard', icon: 'credit-card' },
+  { id: 'maestro', name: 'Maestro', icon: 'credit-card-outline' },
+  { id: 'visa', name: 'Visa', icon: 'credit-card' },
+  { id: 'mailorder', name: 'Mail Order', icon: 'email-outline' },
+  { id: 'installment', name: 'Taksit', icon: 'calendar-clock' },
+  { id: 'cash', name: 'Nakit', icon: 'cash' },
+];
 
 // Para birimleri
 const CURRENCIES = [
@@ -47,6 +59,70 @@ const COUNTRY_PHONE_CODES: { [key: string]: string } = {
   'Hırvatistan': '+385',
   'Sırbistan': '+381',
   'Türkiye': '+90',
+  'Japonya': '+81',
+  'Çin': '+86',
+  'Güney Kore': '+82',
+  'Avustralya': '+61',
+  'Kanada': '+1',
+  'Meksika': '+52',
+  'Brezilya': '+55',
+  'Arjantin': '+54',
+};
+
+type CountryData = {
+  [key: string]: { cities: string[]; states: string[] };
+};
+
+// Ülke, eyalet ve şehir verileri
+const COUNTRIES_DATA: CountryData = {
+  'Amerika Birleşik Devletleri': {
+    states: ['California', 'New York', 'Texas', 'Florida', 'Illinois', 'Pennsylvania', 'Ohio', 'Georgia', 'North Carolina', 'Michigan'],
+    cities: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'San Jose'],
+  },
+  'Almanya': {
+    states: ['Bayern', 'Baden-Württemberg', 'Nordrhein-Westfalen', 'Niedersachsen', 'Hessen'],
+    cities: ['Berlin', 'Hamburg', 'Münih', 'Köln', 'Frankfurt', 'Stuttgart', 'Düsseldorf', 'Dortmund'],
+  },
+  'İngiltere': {
+    states: ['England', 'Scotland', 'Wales', 'Northern Ireland'],
+    cities: ['Londra', 'Birmingham', 'Manchester', 'Leeds', 'Liverpool', 'Bristol', 'Edinburgh', 'Glasgow'],
+  },
+  'Fransa': {
+    states: ['Île-de-France', 'Provence-Alpes-Côte d\'Azur', 'Auvergne-Rhône-Alpes', 'Nouvelle-Aquitaine'],
+    cities: ['Paris', 'Marsilya', 'Lyon', 'Toulouse', 'Nice', 'Nantes', 'Bordeaux', 'Lille'],
+  },
+  'Türkiye': {
+    states: ['Marmara', 'Ege', 'Akdeniz', 'İç Anadolu', 'Karadeniz', 'Doğu Anadolu', 'Güneydoğu Anadolu'],
+    cities: ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Konya', 'Gaziantep'],
+  },
+  'İtalya': {
+    states: ['Lombardia', 'Lazio', 'Campania', 'Sicilia', 'Veneto', 'Emilia-Romagna', 'Piemonte', 'Puglia'],
+    cities: ['Roma', 'Milano', 'Napoli', 'Torino', 'Palermo', 'Genova', 'Bologna', 'Firenze'],
+  },
+  'İspanya': {
+    states: ['Andalucía', 'Cataluña', 'Madrid', 'Valencia', 'Galicia', 'País Vasco'],
+    cities: ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Zaragoza', 'Málaga', 'Murcia', 'Bilbao'],
+  },
+  'Hollanda': {
+    states: ['Noord-Holland', 'Zuid-Holland', 'Utrecht', 'Noord-Brabant', 'Gelderland'],
+    cities: ['Amsterdam', 'Rotterdam', 'Den Haag', 'Utrecht', 'Eindhoven', 'Tilburg', 'Groningen'],
+  },
+  'Belçika': {
+    states: ['Flanders', 'Wallonia', 'Brussels-Capital'],
+    cities: ['Brüksel', 'Antwerp', 'Gent', 'Charleroi', 'Liège', 'Bruges'],
+  },
+  'Rusya': {
+    states: ['Moscow Oblast', 'Saint Petersburg', 'Krasnodar Krai', 'Sverdlovsk Oblast'],
+    cities: ['Moskova', 'St. Petersburg', 'Novosibirsk', 'Yekaterinburg', 'Kazan'],
+  },
+  'Japonya': {
+    states: ['Kanto', 'Kansai', 'Chubu', 'Kyushu', 'Hokkaido'],
+    cities: ['Tokyo', 'Osaka', 'Kyoto', 'Yokohama', 'Nagoya', 'Sapporo', 'Fukuoka', 'Kobe'],
+  },
+  'Avustralya': {
+    states: ['New South Wales', 'Victoria', 'Queensland', 'Western Australia', 'South Australia'],
+    cities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Canberra', 'Gold Coast'],
+  },
 };
 
 interface ExchangeRate {
@@ -55,194 +131,52 @@ interface ExchangeRate {
   updated_at: string;
 }
 
-// Konum listesi
-const LOCATIONS = [
-  { id: 'IST', name: 'İstanbul' },
-  { id: 'ANK', name: 'Ankara' },
-  { id: 'IZM', name: 'İzmir' },
-  { id: 'ANT', name: 'Antalya' },
-  { id: 'BUR', name: 'Bursa' },
-];
-
-type CountryData = {
-  [key: string]: string[];
-};
-
-// Ülke ve şehir verileri
-const COUNTRIES_AND_CITIES: CountryData = {
-  'Amerika Birleşik Devletleri': ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'San Jose'],
-  'Polonya': ['Varşova', 'Krakow', 'Lodz', 'Wroclaw', 'Poznan', 'Gdansk', 'Szczecin', 'Bydgoszcz', 'Lublin', 'Katowice'],
-  'Almanya': ['Berlin', 'Hamburg', 'Münih', 'Köln', 'Frankfurt', 'Stuttgart', 'Düsseldorf', 'Dortmund', 'Essen', 'Leipzig'],
-  'Fransa': ['Paris', 'Marsilya', 'Lyon', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg', 'Montpellier', 'Bordeaux', 'Lille'],
-  'İtalya': ['Roma', 'Milano', 'Napoli', 'Torino', 'Palermo', 'Cenova', 'Bologna', 'Floransa', 'Bari', 'Catania'],
-  'İspanya': ['Madrid', 'Barselona', 'Valencia', 'Sevilla', 'Zaragoza', 'Malaga', 'Murcia', 'Palma', 'Bilbao', 'Alicante'],
-  'İngiltere': ['Londra', 'Birmingham', 'Leeds', 'Glasgow', 'Sheffield', 'Manchester', 'Edinburgh', 'Liverpool', 'Bristol', 'Cardiff'],
-  'Hollanda': ['Amsterdam', 'Rotterdam', 'Lahey', 'Utrecht', 'Eindhoven', 'Groningen', 'Tilburg', 'Almere', 'Breda', 'Nijmegen'],
-  'Belçika': ['Brüksel', 'Antwerp', 'Gent', 'Charleroi', 'Liege', 'Bruges', 'Namur', 'Leuven', 'Mons', 'Aalst'],
-  'İsveç': ['Stockholm', 'Göteborg', 'Malmö', 'Uppsala', 'Örebro', 'Linköping', 'Helsingborg', 'Jönköping', 'Norrköping', 'Lund'],
-  'Norveç': ['Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Drammen', 'Fredrikstad', 'Kristiansand', 'Sandnes', 'Tromsø', 'Sarpsborg'],
-  'Danimarka': ['Kopenhag', 'Aarhus', 'Odense', 'Aalborg', 'Frederiksberg', 'Esbjerg', 'Gentofte', 'Gladsaxe', 'Randers', 'Kolding'],
-  'Finlandiya': ['Helsinki', 'Espoo', 'Tampere', 'Vantaa', 'Oulu', 'Turku', 'Jyväskylä', 'Lahti', 'Kuopio', 'Pori'],
-  'Rusya': ['Moskova', 'St. Petersburg', 'Novosibirsk', 'Yekaterinburg', 'Kazan', 'Nizhny Novgorod', 'Samara', 'Omsk', 'Rostov-on-Don', 'Ufa'],
-  'Ukrayna': ['Kiev', 'Harkov', 'Odessa', 'Dnipro', 'Donetsk', 'Lviv', 'Zaporijya', 'Mariupol', 'Mykolaiv', 'Vinnitsa'],
-  'Çek Cumhuriyeti': ['Prag', 'Brno', 'Ostrava', 'Plzen', 'Liberec', 'Olomouc', 'České Budějovice', 'Hradec Králové', 'Ústí nad Labem', 'Pardubice'],
-  'Avusturya': ['Viyana', 'Graz', 'Linz', 'Salzburg', 'Innsbruck', 'Klagenfurt', 'Villach', 'Wels', 'Sankt Pölten', 'Dornbirn'],
-  'İsviçre': ['Zürih', 'Cenevre', 'Basel', 'Bern', 'Lozan', 'Winterthur', 'St. Gallen', 'Lugano', 'Biel', 'Thun'],
-  'Portekiz': ['Lizbon', 'Porto', 'Vila Nova de Gaia', 'Amadora', 'Braga', 'Coimbra', 'Funchal', 'Setúbal', 'Agualva-Cacém', 'Queluz'],
-  'Yunanistan': ['Atina', 'Selanik', 'Patras', 'Heraklion', 'Larissa', 'Volos', 'Rhodes', 'Ioannina', 'Chania', 'Chalcis'],
-  'Macaristan': ['Budapeşte', 'Debrecen', 'Szeged', 'Miskolc', 'Pécs', 'Győr', 'Nyíregyháza', 'Kecskemét', 'Székesfehérvár', 'Szombathely'],
-  'Romanya': ['Bükreş', 'Cluj-Napoca', 'Timişoara', 'Iaşi', 'Constanţa', 'Craiova', 'Galaţi', 'Braşov', 'Ploieşti', 'Oradea'],
-  'Bulgaristan': ['Sofya', 'Plovdiv', 'Varna', 'Burgas', 'Ruse', 'Stara Zagora', 'Pleven', 'Sliven', 'Dobrich', 'Shumen'],
-  'Hırvatistan': ['Zagreb', 'Split', 'Rijeka', 'Osijek', 'Zadar', 'Pula', 'Slavonski Brod', 'Karlovac', 'Varaždin', 'Šibenik'],
-  'Sırbistan': ['Belgrad', 'Novi Sad', 'Niş', 'Kragujevac', 'Subotica', 'Zrenjanin', 'Pančevo', 'Čačak', 'Kraljevo', 'Smederevo']
-};
-
-// Ürün tipleri için interface
 interface Product {
   id: string;
   name: string;
   quantity: string;
   size: string;
-  price: string;
-  cost: string;
+  priceUSD: string;
+  barcode: string;
   notes: string;
 }
 
-type Coordinates = {
-  latitude: number;
-  longitude: number;
-};
-
-type CoordinatesMap = {
-  [key: string]: Coordinates;
-};
-
-// Koordinat verileri
-const COORDINATES: CoordinatesMap = {
-  'İstanbul': { latitude: 41.0082, longitude: 28.9784 },
-  'Amerika Birleşik Devletleri': { latitude: 37.0902, longitude: -95.7129 },
-  'Polonya': { latitude: 51.9194, longitude: 19.1451 },
-  'Almanya': { latitude: 51.1657, longitude: 10.4515 },
-  'Fransa': { latitude: 46.2276, longitude: 2.2137 },
-  'İtalya': { latitude: 41.8719, longitude: 12.5674 },
-  'İspanya': { latitude: 40.4637, longitude: -3.7492 },
-  'İngiltere': { latitude: 55.3781, longitude: -3.4360 },
-  'Hollanda': { latitude: 52.1326, longitude: 5.2913 },
-  'Belçika': { latitude: 50.8503, longitude: 4.3517 },
-  'İsveç': { latitude: 60.1282, longitude: 18.6435 },
-  'Norveç': { latitude: 60.4720, longitude: 8.4689 },
-  'Danimarka': { latitude: 56.2639, longitude: 9.5018 },
-  'Finlandiya': { latitude: 61.9241, longitude: 25.7482 },
-  'Rusya': { latitude: 61.5240, longitude: 105.3188 },
-  'Ukrayna': { latitude: 48.3794, longitude: 31.1656 },
-  'Çek Cumhuriyeti': { latitude: 49.8175, longitude: 15.4730 },
-  'Avusturya': { latitude: 47.5162, longitude: 14.5501 },
-  'İsviçre': { latitude: 46.8182, longitude: 8.2275 },
-  'Portekiz': { latitude: 39.3999, longitude: -8.2245 },
-  'Yunanistan': { latitude: 39.0742, longitude: 21.8243 },
-  'Macaristan': { latitude: 47.1625, longitude: 19.5033 },
-  'Romanya': { latitude: 45.9432, longitude: 24.9668 },
-  'Bulgaristan': { latitude: 42.7339, longitude: 25.4858 },
-  'Hırvatistan': { latitude: 45.1000, longitude: 15.2000 },
-  'Sırbistan': { latitude: 44.0165, longitude: 21.0059 }
-};
-
-// Mesafe hesaplama fonksiyonu
-const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371; // Dünya'nın yarıçapı (km)
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return Math.round(R * c);
-};
-
-// Kavisli rota koordinatları oluşturma fonksiyonu
-const createCurvedPath = (startCoords: Coordinates, endCoords: Coordinates) => {
-  const midPoint = {
-    latitude: (startCoords.latitude + endCoords.latitude) / 2,
-    longitude: (startCoords.longitude + endCoords.longitude) / 2,
-  };
-  
-  // Kavis için kontrol noktası
-  const controlPoint = {
-    latitude: midPoint.latitude + (Math.random() * 10 - 5),
-    longitude: midPoint.longitude + (Math.random() * 10 - 5),
-  };
-
-  const path = [];
-  for (let t = 0; t <= 1; t += 0.01) {
-    const lat = Math.pow(1-t, 2) * startCoords.latitude + 
-                2 * (1-t) * t * controlPoint.latitude + 
-                Math.pow(t, 2) * endCoords.latitude;
-    
-    const lng = Math.pow(1-t, 2) * startCoords.longitude + 
-                2 * (1-t) * t * controlPoint.longitude + 
-                Math.pow(t, 2) * endCoords.longitude;
-    
-    path.push({
-      latitude: lat,
-      longitude: lng,
-    });
-  }
-  return path;
-};
-
-// Sipariş kaydetme fonksiyonu
-const saveOrder = async (orderData: any) => {
-  try {
-    const response = await fetchWithTimeout(API_ENDPOINTS.orders, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(orderData),
-    });
-
-    if (!response.ok) {
-      throw new Error('Sipariş kaydedilemedi');
-    }
-
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    console.error('API hatası:', error);
-    throw error;
-  }
-};
+// Adım tanımları
+const STEPS = [
+  { id: 1, title: 'Temel Bilgiler', icon: 'information-outline' },
+  { id: 2, title: 'Sevkiyat', icon: 'truck-delivery-outline' },
+  { id: 3, title: 'Ürünler', icon: 'package-variant' },
+  { id: 4, title: 'Müşteri', icon: 'account-outline' },
+];
 
 export default function CreateOrderScreen() {
   const insets = useSafeAreaInsets();
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [showStatePicker, setShowStatePicker] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
-  const [showOverview, setShowOverview] = useState(false);
+  const [showPaymentPicker, setShowPaymentPicker] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
   const [isLoadingRates, setIsLoadingRates] = useState(false);
-  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
-  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
-  const [savedAddresses, setSavedAddresses] = useState<string[]>([]);
+  const [passportImage, setPassportImage] = useState<string | null>(null);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [showBranchPicker, setShowBranchPicker] = useState(false);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
   const [formData, setFormData] = useState({
+    // Temel Bilgiler
     date: new Date().toISOString().split('T')[0],
-    orderNo: '',
-    location: 'İstanbul',
-    customerInfo: {
-      nameSurname: '',
-      address: '',
-      state: '',
-      zipCode: '',
-      country: '',
-      city: '',
-      phone: '',
-      cell: '',
-      email: '',
-    },
+    orderNo: `ORD-${Date.now().toString().slice(-6)}`,
+    branchId: null as number | null,
+    branchName: '',
+
+    // Sevkiyat Bilgileri
     shipping: {
-      type: 'IMMEDIATE',
       salesman: '',
       conference: '',
       cruise: '',
@@ -250,141 +184,59 @@ export default function CreateOrderScreen() {
       guide: '',
       pax: '',
     },
+
+    // Ürün Bilgileri
     products: [{
       id: Date.now().toString(),
       name: '',
-      quantity: '',
+      quantity: '1',
       size: '',
-      price: '',
-      cost: '',
+      priceUSD: '',
+      barcode: '',
       notes: '',
     }] as Product[],
+    paymentMethod: '',
+
+    // Müşteri Bilgileri
+    customer: {
+      nameSurname: '',
+      email: '',
+      phone: '',
+      address: '',
+      state: '',
+      city: '',
+      zipCode: '',
+      country: '',
+      passportNo: '',
+      taxNo: '',
+    },
   });
 
-  const availableCities = useMemo(() => {
-    return formData.customerInfo.country ? COUNTRIES_AND_CITIES[formData.customerInfo.country] : [];
-  }, [formData.customerInfo.country]);
-
-  // Döviz kurlarını çek
   useEffect(() => {
     fetchExchangeRates();
+    fetchBranches();
   }, []);
 
-  // Kayıtlı adresleri yükle
   useEffect(() => {
-    loadSavedAddresses();
-  }, []);
-
-  const loadSavedAddresses = async () => {
-    try {
-      const storedAddresses = await AsyncStorage.getItem('saved_addresses');
-      if (storedAddresses) {
-        setSavedAddresses(JSON.parse(storedAddresses));
-      }
-    } catch (error) {
-      console.error('Adres yükleme hatası:', error);
-    }
-  };
-
-  const saveAddressToStorage = async (address: string) => {
-    if (!address.trim()) return;
-    try {
-      const updatedAddresses = [
-        address,
-        ...savedAddresses.filter(a => a.toLowerCase() !== address.toLowerCase())
-      ].slice(0, 20); // Son 20 adresi sakla
-      await AsyncStorage.setItem('saved_addresses', JSON.stringify(updatedAddresses));
-      setSavedAddresses(updatedAddresses);
-    } catch (error) {
-      console.error('Adres kaydetme hatası:', error);
-    }
-  };
-
-  // Adres önerileri oluştur
-  const generateAddressSuggestions = (input: string) => {
-    if (!input.trim()) {
-      // Boş inputta son kullanılan adresleri göster
-      setAddressSuggestions(savedAddresses.slice(0, 5));
-      return;
-    }
-
-    const inputLower = input.toLowerCase();
-    const suggestions: string[] = [];
-
-    // Kayıtlı adreslerden öner
-    const matchingAddresses = savedAddresses.filter(addr =>
-      addr.toLowerCase().includes(inputLower)
-    );
-    suggestions.push(...matchingAddresses.slice(0, 3));
-
-    // Seçili şehir ve ülkeye göre örnek adresler oluştur
-    const city = formData.customerInfo.city;
-    const country = formData.customerInfo.country;
-
-    if (city && !suggestions.some(s => s.includes(city))) {
-      // Şehir bazlı örnek adres önerileri
-      const streetTypes = ['Cadde', 'Sokak', 'Bulvar', 'Meydan'];
-      const streetNames = ['Ana', 'Merkez', 'Park', 'Bahçe', 'Yeşil'];
-
-      streetTypes.forEach((streetType, idx) => {
-        if (suggestions.length < 5) {
-          const suggestion = `${streetNames[idx]} ${streetType} No:${Math.floor(Math.random() * 100)}, ${city}, ${country}`;
-          if (!suggestions.includes(suggestion)) {
-            suggestions.push(suggestion);
-          }
-        }
-      });
-    }
-
-    // Input ile başlayan öneriler
-    if (suggestions.length < 5 && input.length >= 2) {
-      const commonPrefixes = [
-        `${input} Caddesi`,
-        `${input} Sokak`,
-        `${input} Mahallesi`,
-      ];
-      commonPrefixes.forEach(prefix => {
-        if (suggestions.length < 5 && !suggestions.includes(prefix)) {
-          suggestions.push(prefix);
-        }
-      });
-    }
-
-    setAddressSuggestions(suggestions.slice(0, 5));
-  };
-
-  const handleAddressChange = (text: string) => {
-    setFormData({
-      ...formData,
-      customerInfo: { ...formData.customerInfo, address: text }
-    });
-    generateAddressSuggestions(text);
-    setShowAddressSuggestions(true);
-  };
-
-  const selectAddressSuggestion = (address: string) => {
-    setFormData({
-      ...formData,
-      customerInfo: { ...formData.customerInfo, address }
-    });
-    setShowAddressSuggestions(false);
-  };
+    Animated.timing(progressAnim, {
+      toValue: (currentStep - 1) / (STEPS.length - 1),
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [currentStep]);
 
   // Ülke değiştiğinde telefon kodunu otomatik ayarla
   useEffect(() => {
-    if (formData.customerInfo.country) {
-      const phoneCode = COUNTRY_PHONE_CODES[formData.customerInfo.country] || '';
-      if (phoneCode && !formData.customerInfo.phone.startsWith(phoneCode)) {
+    if (formData.customer.country) {
+      const phoneCode = COUNTRY_PHONE_CODES[formData.customer.country] || '';
+      if (phoneCode && !formData.customer.phone.startsWith(phoneCode)) {
         setFormData(prev => ({
           ...prev,
-          customerInfo: {
-            ...prev.customerInfo,
-            phone: phoneCode + ' '
-          }
+          customer: { ...prev.customer, phone: phoneCode + ' ' }
         }));
       }
     }
-  }, [formData.customerInfo.country]);
+  }, [formData.customer.country]);
 
   const fetchExchangeRates = async () => {
     setIsLoadingRates(true);
@@ -393,8 +245,6 @@ export default function CreateOrderScreen() {
       const data = await response.json();
       setExchangeRates(data);
     } catch (error) {
-      console.error('Döviz kurları alınamadı:', error);
-      // Varsayılan kurlar
       setExchangeRates([
         { currency: 'TRY', rate: 32.50, updated_at: new Date().toISOString() },
         { currency: 'EUR', rate: 0.92, updated_at: new Date().toISOString() },
@@ -405,59 +255,560 @@ export default function CreateOrderScreen() {
     }
   };
 
+  const fetchBranches = async () => {
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.branches);
+      const data = await response.json();
+      setBranches(data);
+    } catch (error) {
+      console.error('Şubeler alınamadı:', error);
+    }
+  };
+
   // USD'den seçili para birimine çevir
-  const convertFromUSD = (usdAmount: number, toCurrency: string): number => {
-    if (toCurrency === 'USD') return usdAmount;
-    const rate = exchangeRates.find(r => r.currency === toCurrency);
-    if (!rate) return usdAmount;
-    return usdAmount * rate.rate;
+  const convertFromUSD = (usdAmount: number): string => {
+    if (selectedCurrency === 'USD') return `$${usdAmount.toFixed(2)}`;
+    const rate = exchangeRates.find(r => r.currency === selectedCurrency);
+    if (!rate) return `$${usdAmount.toFixed(2)}`;
+    const converted = usdAmount * rate.rate;
+    const symbol = CURRENCIES.find(c => c.code === selectedCurrency)?.symbol || selectedCurrency;
+    return `${symbol}${converted.toFixed(2)}`;
   };
 
-  // Seçili para biriminden USD'ye çevir
-  const convertToUSD = (amount: number, fromCurrency: string): number => {
-    if (fromCurrency === 'USD') return amount;
-    const rate = exchangeRates.find(r => r.currency === fromCurrency);
-    if (!rate) return amount;
-    return amount / rate.rate;
+  // Toplam tutarı hesapla
+  const calculateTotal = (): number => {
+    return formData.products.reduce((sum, p) => {
+      const qty = parseFloat(p.quantity) || 0;
+      const price = parseFloat(p.priceUSD) || 0;
+      return sum + (qty * price);
+    }, 0);
   };
 
-  // Para birimi sembolünü al
-  const getCurrencySymbol = (code: string): string => {
-    const currency = CURRENCIES.find(c => c.code === code);
-    return currency?.symbol || code;
+  // Barkod tarama
+  const handleBarCodeScanned = async (result: BarcodeScanningResult) => {
+    if (scanned) return;
+    setScanned(true);
+
+    const { data: barcodeData } = result;
+
+    try {
+      const response = await fetchWithTimeout(`${API_ENDPOINTS.products}?barcode=${barcodeData}`);
+      const existingProducts = await response.json();
+
+      if (existingProducts && existingProducts.length > 0) {
+        const product = existingProducts[0];
+        const newProduct: Product = {
+          id: Date.now().toString(),
+          name: product.name || '',
+          quantity: '1',
+          size: product.sizes || `${product.width}x${product.height}`,
+          priceUSD: product.price_usd?.toString() || '',
+          barcode: barcodeData,
+          notes: '',
+        };
+        setFormData(prev => ({
+          ...prev,
+          products: [...prev.products.filter(p => p.name), newProduct]
+        }));
+        Alert.alert('Ürün Bulundu', `"${product.name}" eklendi.`);
+      } else {
+        Alert.alert('Yeni Barkod', 'Bu barkod sistemde kayıtlı değil.');
+      }
+    } catch (error) {
+      console.error('Barkod arama hatası:', error);
+    }
+
+    setShowBarcodeScanner(false);
+    setTimeout(() => setScanned(false), 1000);
   };
 
-  const renderPicker = (title: string, items: string[], selectedValue: string, onSelect: (value: string) => void, onClose: () => void) => (
-    <Modal
-      visible={true}
-      transparent={true}
-      animationType="slide"
-    >
+  const openBarcodeScanner = async () => {
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert('Kamera İzni Gerekli', 'Barkod taramak için kamera izni vermeniz gerekiyor.');
+        return;
+      }
+    }
+    setScanned(false);
+    setShowBarcodeScanner(true);
+  };
+
+  // Pasaport fotoğrafı çek
+  const takePassportPhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Kamera İzni Gerekli', 'Fotoğraf çekmek için kamera izni vermeniz gerekiyor.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [3, 2],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setPassportImage(result.assets[0].uri);
+    }
+  };
+
+  // Ürün ekleme/silme
+  const addProduct = () => {
+    const newProduct: Product = {
+      id: Date.now().toString(),
+      name: '',
+      quantity: '1',
+      size: '',
+      priceUSD: '',
+      barcode: '',
+      notes: '',
+    };
+    setFormData(prev => ({ ...prev, products: [...prev.products, newProduct] }));
+  };
+
+  const removeProduct = (id: string) => {
+    if (formData.products.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        products: prev.products.filter(p => p.id !== id)
+      }));
+    }
+  };
+
+  const updateProduct = (id: string, field: keyof Product, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      products: prev.products.map(p => p.id === id ? { ...p, [field]: value } : p)
+    }));
+  };
+
+  // Sonraki adıma geç
+  const nextStep = () => {
+    if (currentStep < STEPS.length) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      handleSubmit();
+    }
+  };
+
+  // Önceki adıma dön
+  const prevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // Siparişi gönder
+  const handleSubmit = async () => {
+    try {
+      const orderData = {
+        ...formData,
+        total: calculateTotal(),
+        currency: selectedCurrency,
+        passportImage,
+        created_at: new Date().toISOString(),
+      };
+
+      const response = await fetchWithTimeout(API_ENDPOINTS.orders, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData),
+      });
+
+      if (response.ok) {
+        Alert.alert('Başarılı', 'Sipariş başarıyla oluşturuldu!', [
+          { text: 'Tamam', onPress: () => resetForm() }
+        ]);
+      } else {
+        throw new Error('Sipariş kaydedilemedi');
+      }
+    } catch (error) {
+      Alert.alert('Hata', 'Sipariş oluşturulurken bir hata oluştu.');
+    }
+  };
+
+  const resetForm = () => {
+    setCurrentStep(1);
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      orderNo: `ORD-${Date.now().toString().slice(-6)}`,
+      branchId: null,
+      branchName: '',
+      shipping: { salesman: '', conference: '', cruise: '', agency: '', guide: '', pax: '' },
+      products: [{ id: Date.now().toString(), name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '' }],
+      paymentMethod: '',
+      customer: { nameSurname: '', email: '', phone: '', address: '', state: '', city: '', zipCode: '', country: '', passportNo: '', taxNo: '' },
+    });
+    setPassportImage(null);
+  };
+
+  // Input renderer
+  const renderInput = (label: string, value: string, onChange: (text: string) => void, props: any = {}) => (
+    <View style={styles.inputContainer}>
+      <ThemedText style={styles.inputLabel}>{label}</ThemedText>
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChange}
+        placeholderTextColor={COLORS.neutral[400]}
+        {...props}
+      />
+    </View>
+  );
+
+  // Select input renderer
+  const renderSelect = (label: string, value: string, onPress: () => void, placeholder: string = 'Seçiniz...') => (
+    <View style={styles.inputContainer}>
+      <ThemedText style={styles.inputLabel}>{label}</ThemedText>
+      <TouchableOpacity style={styles.selectInput} onPress={onPress}>
+        <ThemedText style={value ? styles.selectText : styles.selectPlaceholder}>
+          {value || placeholder}
+        </ThemedText>
+        <IconSymbol name="chevron-down" size={20} color={COLORS.neutral[500]} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Step 1: Temel Bilgiler
+  const renderStep1 = () => (
+    <View style={styles.stepContent}>
+      <View style={styles.stepHeader}>
+        <IconSymbol name="information-outline" size={28} color={COLORS.primary.accent} />
+        <View style={styles.stepHeaderText}>
+          <ThemedText style={styles.stepTitle}>Temel Bilgiler</ThemedText>
+          <ThemedText style={styles.stepSubtitle}>Sipariş temel bilgilerini girin</ThemedText>
+        </View>
+      </View>
+
+      <View style={styles.infoCard}>
+        <View style={styles.infoRow}>
+          <ThemedText style={styles.infoLabel}>Sipariş No</ThemedText>
+          <ThemedText style={styles.infoValue}>{formData.orderNo}</ThemedText>
+        </View>
+        <View style={styles.infoRow}>
+          <ThemedText style={styles.infoLabel}>Tarih</ThemedText>
+          <ThemedText style={styles.infoValue}>{formData.date}</ThemedText>
+        </View>
+      </View>
+
+      {renderSelect('Şube', formData.branchName, () => setShowBranchPicker(true), 'Şube seçiniz...')}
+
+      {/* Döviz Kurları */}
+      <View style={styles.exchangeCard}>
+        <View style={styles.exchangeHeader}>
+          <IconSymbol name="currency-usd" size={20} color={COLORS.secondary.gold} />
+          <ThemedText style={styles.exchangeTitle}>Güncel Döviz Kurları</ThemedText>
+          <TouchableOpacity onPress={fetchExchangeRates}>
+            <IconSymbol name="refresh" size={18} color={COLORS.primary.accent} />
+          </TouchableOpacity>
+        </View>
+        {isLoadingRates ? (
+          <ActivityIndicator size="small" color={COLORS.primary.accent} />
+        ) : (
+          <View style={styles.exchangeList}>
+            {exchangeRates.map(rate => (
+              <View key={rate.currency} style={styles.exchangeItem}>
+                <ThemedText style={styles.exchangeCurrency}>{rate.currency}</ThemedText>
+                <ThemedText style={styles.exchangeRate}>{rate.rate.toFixed(2)}</ThemedText>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  // Step 2: Sevkiyat Bilgileri
+  const renderStep2 = () => (
+    <View style={styles.stepContent}>
+      <View style={styles.stepHeader}>
+        <IconSymbol name="truck-delivery-outline" size={28} color={COLORS.primary.accent} />
+        <View style={styles.stepHeaderText}>
+          <ThemedText style={styles.stepTitle}>Sevkiyat Bilgileri</ThemedText>
+          <ThemedText style={styles.stepSubtitle}>Teslimat detaylarını girin</ThemedText>
+        </View>
+      </View>
+
+      {renderInput('Satış Temsilcisi', formData.shipping.salesman,
+        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, salesman: text } })),
+        { placeholder: 'Temsilci adı' }
+      )}
+      {renderInput('Konferans', formData.shipping.conference,
+        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, conference: text } })),
+        { placeholder: 'Konferans bilgisi' }
+      )}
+      {renderInput('Cruise', formData.shipping.cruise,
+        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, cruise: text } })),
+        { placeholder: 'Cruise bilgisi' }
+      )}
+      {renderInput('Acenta', formData.shipping.agency,
+        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, agency: text } })),
+        { placeholder: 'Acenta adı' }
+      )}
+      {renderInput('Rehber', formData.shipping.guide,
+        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, guide: text } })),
+        { placeholder: 'Rehber adı' }
+      )}
+      {renderInput('PAX', formData.shipping.pax,
+        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, pax: text } })),
+        { placeholder: 'Yolcu sayısı', keyboardType: 'numeric' }
+      )}
+    </View>
+  );
+
+  // Step 3: Ürün Bilgileri
+  const renderStep3 = () => (
+    <View style={styles.stepContent}>
+      <View style={styles.stepHeader}>
+        <IconSymbol name="package-variant" size={28} color={COLORS.primary.accent} />
+        <View style={styles.stepHeaderText}>
+          <ThemedText style={styles.stepTitle}>Ürün Bilgileri</ThemedText>
+          <ThemedText style={styles.stepSubtitle}>Siparişe ürün ekleyin</ThemedText>
+        </View>
+      </View>
+
+      {/* Barkod Tarama Butonu */}
+      <TouchableOpacity style={styles.scanButton} onPress={openBarcodeScanner}>
+        <LinearGradient
+          colors={COLORS.gradients.primary as [string, string]}
+          style={styles.scanButtonGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        >
+          <IconSymbol name="barcode-scan" size={24} color="#FFF" />
+          <ThemedText style={styles.scanButtonText}>Barkod Tara</ThemedText>
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* Ürün Listesi */}
+      {formData.products.map((product, index) => (
+        <View key={product.id} style={styles.productCard}>
+          <View style={styles.productHeader}>
+            <ThemedText style={styles.productTitle}>Ürün {index + 1}</ThemedText>
+            {formData.products.length > 1 && (
+              <TouchableOpacity onPress={() => removeProduct(product.id)}>
+                <IconSymbol name="close-circle" size={22} color={COLORS.error.main} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TextInput
+            style={styles.productInput}
+            value={product.name}
+            onChangeText={(text) => updateProduct(product.id, 'name', text)}
+            placeholder="Ürün adı"
+            placeholderTextColor={COLORS.neutral[400]}
+          />
+
+          <View style={styles.productRow}>
+            <TextInput
+              style={[styles.productInput, styles.productInputHalf]}
+              value={product.quantity}
+              onChangeText={(text) => updateProduct(product.id, 'quantity', text)}
+              placeholder="Adet"
+              placeholderTextColor={COLORS.neutral[400]}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={[styles.productInput, styles.productInputHalf]}
+              value={product.size}
+              onChangeText={(text) => updateProduct(product.id, 'size', text)}
+              placeholder="Boyut (örn: 200x300)"
+              placeholderTextColor={COLORS.neutral[400]}
+            />
+          </View>
+
+          <View style={styles.priceInputContainer}>
+            <TextInput
+              style={[styles.productInput, { flex: 1 }]}
+              value={product.priceUSD}
+              onChangeText={(text) => updateProduct(product.id, 'priceUSD', text)}
+              placeholder="Fiyat (USD)"
+              placeholderTextColor={COLORS.neutral[400]}
+              keyboardType="decimal-pad"
+            />
+            {product.priceUSD && selectedCurrency !== 'USD' && (
+              <View style={styles.convertedPrice}>
+                <ThemedText style={styles.convertedPriceText}>
+                  ≈ {convertFromUSD(parseFloat(product.priceUSD) || 0)}
+                </ThemedText>
+              </View>
+            )}
+          </View>
+        </View>
+      ))}
+
+      {/* Ürün Ekle Butonu */}
+      <TouchableOpacity style={styles.addProductBtn} onPress={addProduct}>
+        <IconSymbol name="plus-circle" size={20} color={COLORS.primary.accent} />
+        <ThemedText style={styles.addProductText}>Yeni Ürün Ekle</ThemedText>
+      </TouchableOpacity>
+
+      {/* Para Birimi Seçimi */}
+      <View style={styles.currencySection}>
+        <ThemedText style={styles.sectionLabel}>Ödeme Para Birimi</ThemedText>
+        {renderSelect('', CURRENCIES.find(c => c.code === selectedCurrency)?.name || 'USD',
+          () => setShowCurrencyPicker(true)
+        )}
+      </View>
+
+      {/* Toplam */}
+      <View style={styles.totalCard}>
+        <ThemedText style={styles.totalLabel}>Toplam Tutar</ThemedText>
+        <View style={styles.totalRow}>
+          <ThemedText style={styles.totalUSD}>${calculateTotal().toFixed(2)}</ThemedText>
+          {selectedCurrency !== 'USD' && (
+            <ThemedText style={styles.totalConverted}>
+              ≈ {convertFromUSD(calculateTotal())}
+            </ThemedText>
+          )}
+        </View>
+      </View>
+
+      {/* Ödeme Yöntemi */}
+      <ThemedText style={styles.sectionLabel}>Ödeme Yöntemi</ThemedText>
+      <View style={styles.paymentMethods}>
+        {PAYMENT_METHODS.map(method => (
+          <TouchableOpacity
+            key={method.id}
+            style={[
+              styles.paymentMethod,
+              formData.paymentMethod === method.id && styles.paymentMethodSelected
+            ]}
+            onPress={() => setFormData(prev => ({ ...prev, paymentMethod: method.id }))}
+          >
+            <IconSymbol
+              name={method.icon}
+              size={20}
+              color={formData.paymentMethod === method.id ? COLORS.primary.accent : COLORS.neutral[500]}
+            />
+            <ThemedText style={[
+              styles.paymentMethodText,
+              formData.paymentMethod === method.id && styles.paymentMethodTextSelected
+            ]}>
+              {method.name}
+            </ThemedText>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  // Step 4: Müşteri Bilgileri
+  const renderStep4 = () => {
+    const countryData = formData.customer.country ? COUNTRIES_DATA[formData.customer.country] : null;
+
+    return (
+      <View style={styles.stepContent}>
+        <View style={styles.stepHeader}>
+          <IconSymbol name="account-outline" size={28} color={COLORS.primary.accent} />
+          <View style={styles.stepHeaderText}>
+            <ThemedText style={styles.stepTitle}>Müşteri Bilgileri</ThemedText>
+            <ThemedText style={styles.stepSubtitle}>Müşteri detaylarını girin</ThemedText>
+          </View>
+        </View>
+
+        {renderInput('Ad Soyad *', formData.customer.nameSurname,
+          (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, nameSurname: text } })),
+          { placeholder: 'Müşteri adı soyadı' }
+        )}
+
+        {renderInput('E-posta', formData.customer.email,
+          (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, email: text } })),
+          { placeholder: 'ornek@mail.com', keyboardType: 'email-address', autoCapitalize: 'none' }
+        )}
+
+        {renderSelect('Ülke *', formData.customer.country, () => setShowCountryPicker(true), 'Ülke seçiniz...')}
+
+        {renderInput('Telefon *', formData.customer.phone,
+          (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, phone: text } })),
+          { placeholder: 'Telefon numarası', keyboardType: 'phone-pad' }
+        )}
+
+        {renderInput('Adres *', formData.customer.address,
+          (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, address: text } })),
+          { placeholder: 'Sokak, cadde, bina no...', multiline: true, numberOfLines: 2 }
+        )}
+
+        {renderSelect('Eyalet/Bölge', formData.customer.state,
+          () => countryData && setShowStatePicker(true),
+          'Eyalet seçiniz...'
+        )}
+
+        {renderSelect('Şehir', formData.customer.city,
+          () => countryData && setShowCityPicker(true),
+          'Şehir seçiniz...'
+        )}
+
+        {renderInput('Posta Kodu', formData.customer.zipCode,
+          (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, zipCode: text } })),
+          { placeholder: 'Posta kodu' }
+        )}
+
+        {/* Pasaport ve Vergi Numarası */}
+        <View style={styles.documentsSection}>
+          <ThemedText style={styles.sectionTitle}>Belgeler</ThemedText>
+
+          {renderInput('Pasaport No', formData.customer.passportNo,
+            (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, passportNo: text } })),
+            { placeholder: 'Pasaport numarası', autoCapitalize: 'characters' }
+          )}
+
+          {renderInput('Vergi No', formData.customer.taxNo,
+            (text) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, taxNo: text } })),
+            { placeholder: 'Vergi numarası' }
+          )}
+
+          {/* Pasaport Fotoğrafı */}
+          <ThemedText style={styles.inputLabel}>Pasaport Fotoğrafı</ThemedText>
+          <TouchableOpacity style={styles.passportPhotoBtn} onPress={takePassportPhoto}>
+            {passportImage ? (
+              <Image source={{ uri: passportImage }} style={styles.passportImage} />
+            ) : (
+              <View style={styles.passportPlaceholder}>
+                <IconSymbol name="camera" size={32} color={COLORS.neutral[400]} />
+                <ThemedText style={styles.passportPlaceholderText}>Fotoğraf Çek</ThemedText>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Picker Modal
+  const renderPickerModal = (
+    visible: boolean,
+    title: string,
+    items: string[],
+    selectedValue: string,
+    onSelect: (value: string) => void,
+    onClose: () => void
+  ) => (
+    <Modal visible={visible} transparent animationType="slide">
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <ThemedText style={styles.modalTitle}>{title}</ThemedText>
             <TouchableOpacity onPress={onClose}>
-              <IconSymbol name="close" size={24} color="#666" />
+              <IconSymbol name="close" size={24} color={COLORS.neutral[600]} />
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalList}>
             {items.map((item, index) => (
               <TouchableOpacity
                 key={index}
-                style={[
-                  styles.modalItem,
-                  selectedValue === item && styles.modalItemSelected
-                ]}
-                onPress={() => {
-                  onSelect(item);
-                  onClose();
-                }}
+                style={[styles.modalItem, selectedValue === item && styles.modalItemSelected]}
+                onPress={() => { onSelect(item); onClose(); }}
               >
-                <ThemedText style={[
-                  styles.modalItemText,
-                  selectedValue === item && styles.modalItemTextSelected
-                ]}>{item}</ThemedText>
+                <ThemedText style={[styles.modalItemText, selectedValue === item && styles.modalItemTextSelected]}>
+                  {item}
+                </ThemedText>
+                {selectedValue === item && (
+                  <IconSymbol name="check" size={20} color={COLORS.primary.accent} />
+                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -466,787 +817,176 @@ export default function CreateOrderScreen() {
     </Modal>
   );
 
-  const renderInput = (label: string, value: string, onChangeText: (text: string) => void, props = {}) => (
-    <View style={styles.inputContainer}>
-      <ThemedText style={styles.label}>{label}</ThemedText>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChangeText}
-        placeholderTextColor="#999"
-        {...props}
-      />
-    </View>
-  );
-
-  const renderSelectInput = (label: string, value: string, onPress: () => void) => (
-    <View style={styles.inputContainer}>
-      <ThemedText style={styles.label}>{label}</ThemedText>
-      <TouchableOpacity style={styles.selectInput} onPress={onPress}>
-        <ThemedText style={styles.selectInputText}>{value || `Seçiniz...`}</ThemedText>
-        <IconSymbol name="chevron-down" size={24} color="#666" />
-      </TouchableOpacity>
-    </View>
-  );
-
-  const handleSave = () => {
-    setShowOverview(true);
-  };
-
-  const handleConfirmOrder = async () => {
-    try {
-      // Siparişi API'ye gönder
-      const result = await saveOrder(formData);
-      console.log('Sipariş başarıyla kaydedildi:', result);
-
-      // Adresi gelecek kullanımlar için kaydet
-      if (formData.customerInfo.address) {
-        await saveAddressToStorage(formData.customerInfo.address);
-      }
-      
-      // Başarılı mesajını göster
-      Alert.alert(
-        'Başarılı',
-        'Sipariş başarıyla oluşturuldu ve kaydedildi.',
-        [{ text: 'Tamam' }]
-      );
-      
-      // Modal'ı kapat
-      setShowOverview(false);
-
-      // Form verilerini sıfırla
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        orderNo: '',
-        location: 'İstanbul',
-        customerInfo: {
-          nameSurname: '',
-          address: '',
-          state: '',
-          zipCode: '',
-          country: '',
-          city: '',
-          phone: '',
-          cell: '',
-          email: '',
-        },
-        shipping: {
-          type: 'IMMEDIATE',
-          salesman: '',
-          conference: '',
-          cruise: '',
-          agency: '',
-          guide: '',
-          pax: '',
-        },
-        products: [{
-          id: Date.now().toString(),
-          name: '',
-          quantity: '',
-          size: '',
-          price: '',
-          cost: '',
-          notes: '',
-        }],
-      });
-    } catch (error) {
-      console.error('Sipariş kaydedilirken hata oluştu:', error);
-      Alert.alert(
-        'Hata',
-        'Sipariş kaydedilirken bir hata oluştu. Lütfen tekrar deneyin.',
-        [{ text: 'Tamam' }]
-      );
-    }
-  };
-
-  const renderFormSection = (title: string, children: React.ReactNode) => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <ThemedText style={styles.sectionTitle}>{title}</ThemedText>
-      </View>
-      <View style={styles.sectionContent}>
-        {children}
-      </View>
-    </View>
-  );
-
-  // Yeni ürün ekleme fonksiyonu
-  const handleAddProduct = () => {
-    const newProduct: Product = {
-      id: Date.now().toString(),
-      name: '',
-      quantity: '',
-      size: '',
-      price: '',
-      cost: '',
-      notes: '',
-    };
-    setFormData({
-      ...formData,
-      products: [...formData.products, newProduct],
-    });
-  };
-
-  // Ürün silme fonksiyonu
-  const handleRemoveProduct = (productId: string) => {
-    setFormData({
-      ...formData,
-      products: formData.products.filter(p => p.id !== productId),
-    });
-  };
-
-  // Ürün güncelleme fonksiyonu
-  const handleUpdateProduct = (productId: string, field: keyof Product, value: string) => {
-    setFormData({
-      ...formData,
-      products: formData.products.map(p =>
-        p.id === productId ? { ...p, [field]: value } : p
-      ),
-    });
-  };
-
-  // Ürün kartı bileşeni
-  const renderProductCard = (product: Product, index: number) => (
-    <View key={product.id} style={styles.productCard}>
-      <View style={styles.productHeader}>
-        <ThemedText style={styles.productTitle}>Ürün {index + 1}</ThemedText>
-        {index > 0 && (
-          <TouchableOpacity
-            onPress={() => handleRemoveProduct(product.id)}
-            style={styles.removeButton}
-          >
-            <IconSymbol name="close" size={24} color="#ff4444" />
+  // Barkod Tarayıcı Modal
+  const renderBarcodeScanner = () => (
+    <Modal visible={showBarcodeScanner} animationType="slide">
+      <View style={styles.scannerContainer}>
+        <View style={styles.scannerHeader}>
+          <TouchableOpacity style={styles.scannerClose} onPress={() => setShowBarcodeScanner(false)}>
+            <IconSymbol name="close" size={24} color="#FFF" />
           </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.productFields}>
-        <View style={styles.productField}>
-          <ThemedText style={styles.fieldLabel}>Ürün Adı</ThemedText>
-          <TextInput
-            style={styles.fieldInput}
-            value={product.name}
-            onChangeText={(text) => handleUpdateProduct(product.id, 'name', text)}
-            placeholder="Ürün adını girin"
-          />
+          <ThemedText style={styles.scannerTitle}>Barkod Tara</ThemedText>
+          <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.row}>
-          <View style={[styles.productField, { flex: 1, marginRight: 8 }]}>
-            <ThemedText style={styles.fieldLabel}>Adet</ThemedText>
-            <TextInput
-              style={styles.fieldInput}
-              value={product.quantity}
-              onChangeText={(text) => handleUpdateProduct(product.id, 'quantity', text)}
-              keyboardType="numeric"
-              placeholder="0"
-            />
+        <CameraView
+          style={styles.camera}
+          facing="back"
+          barcodeScannerSettings={{
+            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
+          }}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+        >
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerFrame}>
+              <View style={[styles.corner, styles.topLeft]} />
+              <View style={[styles.corner, styles.topRight]} />
+              <View style={[styles.corner, styles.bottomLeft]} />
+              <View style={[styles.corner, styles.bottomRight]} />
+            </View>
+            <ThemedText style={styles.scannerHint}>Barkodu çerçeve içine hizalayın</ThemedText>
           </View>
-
-          <View style={[styles.productField, { flex: 1, marginLeft: 8 }]}>
-            <ThemedText style={styles.fieldLabel}>Boyut</ThemedText>
-            <TextInput
-              style={styles.fieldInput}
-              value={product.size}
-              onChangeText={(text) => handleUpdateProduct(product.id, 'size', text)}
-              placeholder="Örn: 80x150"
-            />
-          </View>
-        </View>
-
-        <View style={styles.productField}>
-          <ThemedText style={styles.fieldLabel}>Fiyat</ThemedText>
-          <TextInput
-            style={styles.fieldInput}
-            value={product.price}
-            onChangeText={(text) => handleUpdateProduct(product.id, 'price', text)}
-            keyboardType="decimal-pad"
-            placeholder="0.00"
-          />
-        </View>
-
-        <View style={styles.productField}>
-          <ThemedText style={styles.fieldLabel}>Maliyet</ThemedText>
-          <TextInput
-            style={styles.fieldInput}
-            value={product.cost}
-            onChangeText={(text) => handleUpdateProduct(product.id, 'cost', text)}
-            keyboardType="decimal-pad"
-            placeholder="0.00"
-          />
-        </View>
-
-        <View style={styles.productField}>
-          <ThemedText style={styles.fieldLabel}>Notlar</ThemedText>
-          <TextInput
-            style={[styles.fieldInput, styles.textArea]}
-            value={product.notes}
-            onChangeText={(text) => handleUpdateProduct(product.id, 'notes', text)}
-            multiline
-            numberOfLines={3}
-            placeholder="Ürün hakkında ek bilgiler..."
-          />
-        </View>
+        </CameraView>
       </View>
-    </View>
+    </Modal>
   );
-
-  const renderOverviewModal = () => {
-    const sourceCoords = COORDINATES['İstanbul'];
-    const destCoords = COORDINATES[formData.customerInfo.country];
-    const distance = destCoords ? calculateDistance(
-      sourceCoords.latitude,
-      sourceCoords.longitude,
-      destCoords.latitude,
-      destCoords.longitude
-    ) : 0;
-
-    // Sabit rota koordinatlarını useMemo ile oluştur
-    const pathCoordinates = useMemo(() => {
-      if (!destCoords) return [];
-      
-      const midPoint = {
-        latitude: (sourceCoords.latitude + destCoords.latitude) / 2,
-        longitude: (sourceCoords.longitude + destCoords.longitude) / 2,
-      };
-      
-      // Sabit bir kontrol noktası kullan
-      const controlPoint = {
-        latitude: midPoint.latitude + 3,
-        longitude: midPoint.longitude,
-      };
-
-      const path = [];
-      for (let t = 0; t <= 1; t += 0.01) {
-        const lat = Math.pow(1-t, 2) * sourceCoords.latitude + 
-                    2 * (1-t) * t * controlPoint.latitude + 
-                    Math.pow(t, 2) * destCoords.latitude;
-        
-        const lng = Math.pow(1-t, 2) * sourceCoords.longitude + 
-                    2 * (1-t) * t * controlPoint.longitude + 
-                    Math.pow(t, 2) * destCoords.longitude;
-        
-        path.push({
-          latitude: lat,
-          longitude: lng,
-        });
-      }
-      return path;
-    }, [destCoords]);
-
-    const [markerIndex, setMarkerIndex] = useState(0);
-
-    useEffect(() => {
-      if (showOverview && destCoords && pathCoordinates.length > 0) {
-        const interval = setInterval(() => {
-          setMarkerIndex((current) => {
-            if (current >= pathCoordinates.length - 1) return 0;
-            return current + 1;
-          });
-        }, 100); // Hızı biraz yavaşlattım
-
-        return () => clearInterval(interval);
-      }
-    }, [showOverview, destCoords, pathCoordinates.length]);
-
-    return (
-      <Modal
-        visible={showOverview}
-        animationType="fade"
-        transparent={true}
-      >
-        <View style={styles.overviewOverlay}>
-          <View style={styles.overviewContent}>
-            <View style={styles.overviewHeader}>
-              <ThemedText style={styles.overviewTitle}>Sipariş Önizleme</ThemedText>
-              <TouchableOpacity onPress={() => setShowOverview(false)}>
-                <IconSymbol name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.overviewScroll}>
-              {/* Harita Bölümü */}
-              <View style={styles.overviewSection}>
-                <View style={styles.overviewSectionHeader}>
-                  <IconSymbol name="map-marker-distance" size={20} color="#00b51a" />
-                  <ThemedText style={styles.overviewSectionTitle}>
-                    Teslimat Rotası ({distance} km)
-                  </ThemedText>
-                </View>
-                <View style={styles.mapContainer}>
-                  <MapView
-                    style={styles.map}
-                    initialRegion={{
-                      latitude: (sourceCoords.latitude + (destCoords?.latitude || sourceCoords.latitude)) / 2,
-                      longitude: (sourceCoords.longitude + (destCoords?.longitude || sourceCoords.longitude)) / 2,
-                      latitudeDelta: 40,
-                      longitudeDelta: 40,
-                    }}
-                    mapType="hybrid"
-                  >
-                    {/* Sabit rota çizgisi */}
-                    {destCoords && (
-                      <Polyline
-                        coordinates={pathCoordinates}
-                        strokeColor="#00b51a"
-                        strokeWidth={3}
-                        lineDashPattern={[5, 5]}
-                      />
-                    )}
-
-                    {/* Başlangıç noktası */}
-                    <Marker
-                      coordinate={sourceCoords}
-                      title="İstanbul"
-                    >
-                      <View style={styles.markerContainer}>
-                        <IconSymbol name="home" size={24} color="#00b51a" />
-                      </View>
-                    </Marker>
-
-                    {/* Hedef noktası */}
-                    {destCoords && (
-                      <Marker
-                        coordinate={destCoords}
-                        title={formData.customerInfo.country}
-                      >
-                        <View style={styles.markerContainer}>
-                          <IconSymbol name="map-marker" size={24} color="#ff4444" />
-                        </View>
-                      </Marker>
-                    )}
-
-                    {/* Hareketli sipariş ikonu */}
-                    {destCoords && pathCoordinates.length > 0 && (
-                      <Marker
-                        coordinate={pathCoordinates[markerIndex]}
-                      >
-                        <View style={styles.movingMarker}>
-                          <IconSymbol name="package-variant" size={24} color="#00b51a" />
-                        </View>
-                      </Marker>
-                    )}
-                  </MapView>
-                </View>
-              </View>
-
-              {/* Temel Bilgiler */}
-              <View style={styles.overviewSection}>
-                <View style={styles.overviewSectionHeader}>
-                  <IconSymbol name="information" size={20} color="#00b51a" />
-                  <ThemedText style={styles.overviewSectionTitle}>Temel Bilgiler</ThemedText>
-                </View>
-                <View style={styles.overviewDetails}>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Tarih:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.date}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Sipariş No:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.orderNo}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Konum:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.location}</ThemedText>
-                  </View>
-                </View>
-              </View>
-
-              {/* Müşteri Bilgileri */}
-              <View style={styles.overviewSection}>
-                <View style={styles.overviewSectionHeader}>
-                  <IconSymbol name="account" size={20} color="#00b51a" />
-                  <ThemedText style={styles.overviewSectionTitle}>Müşteri Bilgileri</ThemedText>
-                </View>
-                <View style={styles.overviewDetails}>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Ad Soyad:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.customerInfo.nameSurname}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Adres:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.customerInfo.address}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Ülke/Şehir:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>
-                      {formData.customerInfo.country} / {formData.customerInfo.city}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Telefon:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.customerInfo.phone}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>E-posta:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.customerInfo.email}</ThemedText>
-                  </View>
-                </View>
-              </View>
-
-              {/* Sevkiyat Bilgileri */}
-              <View style={styles.overviewSection}>
-                <View style={styles.overviewSectionHeader}>
-                  <IconSymbol name="truck-delivery" size={20} color="#00b51a" />
-                  <ThemedText style={styles.overviewSectionTitle}>Sevkiyat Bilgileri</ThemedText>
-                </View>
-                <View style={styles.overviewDetails}>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Satış Temsilcisi:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.shipping.salesman}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Konferans:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.shipping.conference}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Acenta:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.shipping.agency}</ThemedText>
-                  </View>
-                  <View style={styles.overviewRow}>
-                    <ThemedText style={styles.overviewLabel}>Rehber:</ThemedText>
-                    <ThemedText style={styles.overviewValue}>{formData.shipping.guide}</ThemedText>
-                  </View>
-                </View>
-              </View>
-
-              {/* Ürün Bilgileri */}
-              <View style={styles.overviewSection}>
-                <View style={styles.overviewSectionHeader}>
-                  <IconSymbol name="package-variant" size={20} color="#00b51a" />
-                  <ThemedText style={styles.overviewSectionTitle}>Ürün Bilgileri</ThemedText>
-                </View>
-                {formData.products.map((product, index) => (
-                  <View key={product.id} style={styles.overviewProductCard}>
-                    <View style={styles.overviewProductHeader}>
-                      <ThemedText style={styles.overviewProductTitle}>Ürün {index + 1}</ThemedText>
-                    </View>
-                    <View style={styles.overviewDetails}>
-                      <View style={styles.overviewRow}>
-                        <ThemedText style={styles.overviewLabel}>Ürün Adı:</ThemedText>
-                        <ThemedText style={styles.overviewValue}>{product.name}</ThemedText>
-                      </View>
-                      <View style={styles.overviewRow}>
-                        <ThemedText style={styles.overviewLabel}>Adet:</ThemedText>
-                        <ThemedText style={styles.overviewValue}>{product.quantity}</ThemedText>
-                      </View>
-                      <View style={styles.overviewRow}>
-                        <ThemedText style={styles.overviewLabel}>Boyut:</ThemedText>
-                        <ThemedText style={styles.overviewValue}>{product.size}</ThemedText>
-                      </View>
-                      <View style={styles.overviewRow}>
-                        <ThemedText style={styles.overviewLabel}>Fiyat:</ThemedText>
-                        <ThemedText style={styles.overviewValue}>{product.price} USD</ThemedText>
-                      </View>
-                      <View style={styles.overviewRow}>
-                        <ThemedText style={styles.overviewLabel}>Maliyet:</ThemedText>
-                        <ThemedText style={styles.overviewValue}>{product.cost} USD</ThemedText>
-                      </View>
-                      {product.notes && (
-                        <View style={styles.overviewRow}>
-                          <ThemedText style={styles.overviewLabel}>Notlar:</ThemedText>
-                          <ThemedText style={styles.overviewValue}>{product.notes}</ThemedText>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
-
-            <View style={styles.overviewActions}>
-              <TouchableOpacity 
-                style={[styles.overviewButton, styles.overviewCancelButton]} 
-                onPress={() => setShowOverview(false)}
-              >
-                <ThemedText style={styles.overviewButtonText}>İptal</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.overviewButton, styles.overviewConfirmButton]}
-                onPress={handleConfirmOrder}
-              >
-                <ThemedText style={[styles.overviewButtonText, styles.overviewConfirmText]}>
-                  Siparişi Onayla
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Başlık */}
-        <View style={styles.header}>
-          <LinearGradient
-            colors={COLORS.gradients.primary as [string, string]}
-            style={styles.headerIconBg}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <IconSymbol name="file-document-edit" size={22} color="#fff" />
-          </LinearGradient>
-          <ThemedText style={styles.headerTitle}>Yeni Sipariş Oluştur</ThemedText>
-        </View>
+      <StatusBar barStyle="dark-content" />
 
-        {/* Döviz Kurları */}
-        <View style={styles.exchangeRateSection}>
-          <View style={styles.exchangeRateHeader}>
-            <IconSymbol name="currency-usd" size={20} color={COLORS.primary.main} />
-            <ThemedText style={styles.exchangeRateTitle}>Güncel Döviz Kurları</ThemedText>
-            <TouchableOpacity onPress={fetchExchangeRates} style={styles.refreshButton}>
-              <IconSymbol name="refresh" size={18} color={COLORS.primary.accent} />
-            </TouchableOpacity>
-          </View>
-          {isLoadingRates ? (
-            <ActivityIndicator size="small" color={COLORS.primary.main} />
-          ) : (
-            <View style={styles.exchangeRateList}>
-              {exchangeRates.map((rate) => (
-                <View key={rate.currency} style={styles.exchangeRateItem}>
-                  <ThemedText style={styles.exchangeRateCurrency}>{rate.currency}</ThemedText>
-                  <ThemedText style={styles.exchangeRateValue}>
-                    1 USD = {rate.rate.toFixed(2)} {rate.currency}
+      {/* Header */}
+      <View style={styles.header}>
+        <ThemedText style={styles.headerTitle}>Yeni Sipariş</ThemedText>
+        <ThemedText style={styles.headerSubtitle}>Adım {currentStep} / {STEPS.length}</ThemedText>
+      </View>
+
+      {/* Progress Bar */}
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBar}>
+          <Animated.View
+            style={[
+              styles.progressFill,
+              { width: progressAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%']
+              })}
+            ]}
+          />
+        </View>
+        <View style={styles.stepsIndicator}>
+          {STEPS.map((step, index) => (
+            <View key={step.id} style={styles.stepDot}>
+              <View style={[
+                styles.dot,
+                currentStep >= step.id && styles.dotActive,
+                currentStep === step.id && styles.dotCurrent
+              ]}>
+                {currentStep > step.id ? (
+                  <IconSymbol name="check" size={12} color="#FFF" />
+                ) : (
+                  <ThemedText style={[styles.dotText, currentStep >= step.id && styles.dotTextActive]}>
+                    {step.id}
                   </ThemedText>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Temel Bilgiler */}
-        {renderFormSection('Temel Bilgiler', (
-          <>
-            {renderInput('Tarih', formData.date,
-              (text) => setFormData({ ...formData, date: text }), { placeholder: 'GG/AA/YYYY' })}
-            {renderInput('Sipariş No', formData.orderNo,
-              (text) => setFormData({ ...formData, orderNo: text }), { placeholder: 'Örn: 100926' })}
-            {renderSelectInput('Konum', formData.location, () => setShowLocationPicker(true))}
-
-            {/* Para Birimi Seçici */}
-            <View style={styles.inputContainer}>
-              <ThemedText style={styles.label}>Para Birimi</ThemedText>
-              <TouchableOpacity
-                style={styles.currencySelector}
-                onPress={() => setShowCurrencyPicker(true)}
-              >
-                <ThemedText style={styles.currencyText}>
-                  {getCurrencySymbol(selectedCurrency)} {selectedCurrency}
-                </ThemedText>
-                <IconSymbol name="chevron-down" size={20} color="#666" />
-              </TouchableOpacity>
-            </View>
-          </>
-        ))}
-
-        {/* Müşteri Bilgileri */}
-        {renderFormSection('Müşteri Bilgileri', (
-          <>
-            {renderInput('Ad Soyad', formData.customerInfo.nameSurname,
-              (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, nameSurname: text } }))}
-
-            {/* Adres Otomatik Tamamlama */}
-            <View style={styles.inputContainer}>
-              <ThemedText style={styles.label}>Adres</ThemedText>
-              <View style={styles.addressInputWrapper}>
-                <TextInput
-                  style={[styles.input, styles.addressInput]}
-                  value={formData.customerInfo.address}
-                  onChangeText={handleAddressChange}
-                  onFocus={() => {
-                    generateAddressSuggestions(formData.customerInfo.address);
-                    setShowAddressSuggestions(true);
-                  }}
-                  onBlur={() => setTimeout(() => setShowAddressSuggestions(false), 200)}
-                  placeholder="Adres yazın veya önerileden seçin..."
-                  placeholderTextColor="#999"
-                  multiline
-                  numberOfLines={2}
-                />
-                {showAddressSuggestions && addressSuggestions.length > 0 && (
-                  <View style={styles.suggestionsContainer}>
-                    <View style={styles.suggestionsHeader}>
-                      <IconSymbol name="map-marker" size={16} color={COLORS.primary.main} />
-                      <ThemedText style={styles.suggestionsTitle}>
-                        {savedAddresses.length > 0 ? 'Öneriler & Son Adresler' : 'Öneriler'}
-                      </ThemedText>
-                    </View>
-                    <ScrollView
-                      style={styles.suggestionsList}
-                      nestedScrollEnabled={true}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {addressSuggestions.map((suggestion, index) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={styles.suggestionItem}
-                          onPress={() => selectAddressSuggestion(suggestion)}
-                        >
-                          <IconSymbol
-                            name={savedAddresses.includes(suggestion) ? 'history' : 'map-marker-outline'}
-                            size={16}
-                            color={savedAddresses.includes(suggestion) ? COLORS.info.main : COLORS.light.text.tertiary}
-                          />
-                          <ThemedText style={styles.suggestionText} numberOfLines={2}>
-                            {suggestion}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
                 )}
               </View>
+              <ThemedText style={[styles.stepLabel, currentStep === step.id && styles.stepLabelActive]}>
+                {step.title}
+              </ThemedText>
             </View>
+          ))}
+        </View>
+      </View>
 
-            {renderInput('Posta Kodu', formData.customerInfo.zipCode,
-              (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, zipCode: text } }))}
-            {renderSelectInput('Ülke', formData.customerInfo.country, () => setShowCountryPicker(true))}
-            {renderSelectInput('Şehir', formData.customerInfo.city,
-              () => formData.customerInfo.country && setShowCityPicker(true))}
-            {renderInput('Telefon', formData.customerInfo.phone,
-              (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, phone: text } }), 
-              { keyboardType: 'phone-pad' })}
-            {renderInput('E-posta', formData.customerInfo.email,
-              (text) => setFormData({ ...formData, customerInfo: { ...formData.customerInfo, email: text } }),
-              { keyboardType: 'email-address', autoCapitalize: 'none' })}
-          </>
-        ))}
+      {/* Content */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {currentStep === 1 && renderStep1()}
+        {currentStep === 2 && renderStep2()}
+        {currentStep === 3 && renderStep3()}
+        {currentStep === 4 && renderStep4()}
+        <View style={{ height: 100 }} />
+      </ScrollView>
 
-        {/* Sevkiyat Bilgileri */}
-        {renderFormSection('Sevkiyat Bilgileri', (
-          <>
-            {renderInput('Satış Temsilcisi', formData.shipping.salesman,
-              (text) => setFormData({ ...formData, shipping: { ...formData.shipping, salesman: text } }))}
-            {renderInput('Konferans', formData.shipping.conference,
-              (text) => setFormData({ ...formData, shipping: { ...formData.shipping, conference: text } }))}
-            {renderInput('Acenta', formData.shipping.agency,
-              (text) => setFormData({ ...formData, shipping: { ...formData.shipping, agency: text } }))}
-            {renderInput('Rehber', formData.shipping.guide,
-              (text) => setFormData({ ...formData, shipping: { ...formData.shipping, guide: text } }))}
-          </>
-        ))}
-
-        {/* Ürün Bilgileri */}
-        {renderFormSection('Ürün Bilgileri', (
-          <View>
-            {formData.products.map((product, index) => renderProductCard(product, index))}
-            
-            <TouchableOpacity
-              style={styles.addProductButton}
-              onPress={handleAddProduct}
-            >
-              <IconSymbol name="plus-circle" size={24} color="#fff" />
-              <ThemedText style={styles.addProductButtonText}>Yeni Ürün Ekle</ThemedText>
-            </TouchableOpacity>
-          </View>
-        ))}
-
-        {showLocationPicker && renderPicker(
-          'Konum Seçin',
-          LOCATIONS.map(loc => loc.name),
-          formData.location,
-          (value) => setFormData({ ...formData, location: value }),
-          () => setShowLocationPicker(false)
+      {/* Navigation Buttons */}
+      <View style={[styles.navigation, { paddingBottom: insets.bottom + SPACING.md }]}>
+        {currentStep > 1 && (
+          <TouchableOpacity style={styles.backButton} onPress={prevStep}>
+            <IconSymbol name="chevron-left" size={20} color={COLORS.primary.accent} />
+            <ThemedText style={styles.backButtonText}>Geri</ThemedText>
+          </TouchableOpacity>
         )}
 
-        {showCountryPicker && renderPicker(
-          'Ülke Seçin',
-          Object.keys(COUNTRIES_AND_CITIES),
-          formData.customerInfo.country,
-          (value) => setFormData({
-            ...formData,
-            customerInfo: {
-              ...formData.customerInfo,
-              country: value,
-              city: '' // Ülke değiştiğinde şehri sıfırla
-            }
-          }),
-          () => setShowCountryPicker(false)
-        )}
-
-        {showCityPicker && renderPicker(
-          'Şehir Seçin',
-          availableCities,
-          formData.customerInfo.city,
-          (value) => setFormData({
-            ...formData,
-            customerInfo: {
-              ...formData.customerInfo,
-              city: value
-            }
-          }),
-          () => setShowCityPicker(false)
-        )}
-
-        {showCurrencyPicker && (
-          <Modal
-            visible={true}
-            transparent={true}
-            animationType="slide"
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <View style={styles.modalHeader}>
-                  <ThemedText style={styles.modalTitle}>Para Birimi Seçin</ThemedText>
-                  <TouchableOpacity onPress={() => setShowCurrencyPicker(false)}>
-                    <IconSymbol name="close" size={24} color="#666" />
-                  </TouchableOpacity>
-                </View>
-                <ScrollView style={styles.modalList}>
-                  {CURRENCIES.map((currency) => (
-                    <TouchableOpacity
-                      key={currency.code}
-                      style={[
-                        styles.modalItem,
-                        selectedCurrency === currency.code && styles.modalItemSelected
-                      ]}
-                      onPress={() => {
-                        setSelectedCurrency(currency.code);
-                        setShowCurrencyPicker(false);
-                      }}
-                    >
-                      <View style={styles.currencyItemContent}>
-                        <ThemedText style={styles.currencySymbol}>{currency.symbol}</ThemedText>
-                        <View>
-                          <ThemedText style={[
-                            styles.modalItemText,
-                            selectedCurrency === currency.code && styles.modalItemTextSelected
-                          ]}>{currency.code}</ThemedText>
-                          <ThemedText style={styles.currencyName}>{currency.name}</ThemedText>
-                        </View>
-                      </View>
-                      {selectedCurrency === currency.code && (
-                        <IconSymbol name="check" size={20} color={COLORS.primary.main} />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </View>
-          </Modal>
-        )}
-
-        {/* Kaydet Butonu */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
           <LinearGradient
             colors={COLORS.gradients.primary as [string, string]}
+            style={styles.nextButtonGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.saveButtonGradient}
           >
-            <IconSymbol name="check-circle" size={22} color="#fff" />
-            <ThemedText style={styles.saveButtonText}>Siparişi Kaydet</ThemedText>
+            <ThemedText style={styles.nextButtonText}>
+              {currentStep === STEPS.length ? 'Siparişi Tamamla' : 'Devam'}
+            </ThemedText>
+            <IconSymbol name={currentStep === STEPS.length ? 'check' : 'chevron-right'} size={20} color="#FFF" />
           </LinearGradient>
         </TouchableOpacity>
+      </View>
 
-        {renderOverviewModal()}
+      {/* Modals */}
+      {renderBarcodeScanner()}
 
-        {/* Bottom padding for navigation bar */}
-        <View style={{ height: 120 }} />
-      </ScrollView>
+      {renderPickerModal(
+        showBranchPicker,
+        'Şube Seçin',
+        branches.map(b => b.name),
+        formData.branchName,
+        (value) => {
+          const branch = branches.find(b => b.name === value);
+          setFormData(prev => ({ ...prev, branchId: branch?.id, branchName: value }));
+        },
+        () => setShowBranchPicker(false)
+      )}
+
+      {renderPickerModal(
+        showCountryPicker,
+        'Ülke Seçin',
+        Object.keys(COUNTRIES_DATA),
+        formData.customer.country,
+        (value) => setFormData(prev => ({
+          ...prev,
+          customer: { ...prev.customer, country: value, state: '', city: '' }
+        })),
+        () => setShowCountryPicker(false)
+      )}
+
+      {renderPickerModal(
+        showStatePicker,
+        'Eyalet Seçin',
+        formData.customer.country ? COUNTRIES_DATA[formData.customer.country]?.states || [] : [],
+        formData.customer.state,
+        (value) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, state: value } })),
+        () => setShowStatePicker(false)
+      )}
+
+      {renderPickerModal(
+        showCityPicker,
+        'Şehir Seçin',
+        formData.customer.country ? COUNTRIES_DATA[formData.customer.country]?.cities || [] : [],
+        formData.customer.city,
+        (value) => setFormData(prev => ({ ...prev, customer: { ...prev.customer, city: value } })),
+        () => setShowCityPicker(false)
+      )}
+
+      {renderPickerModal(
+        showCurrencyPicker,
+        'Para Birimi Seçin',
+        CURRENCIES.map(c => c.name),
+        CURRENCIES.find(c => c.code === selectedCurrency)?.name || '',
+        (value) => {
+          const currency = CURRENCIES.find(c => c.name === value);
+          if (currency) setSelectedCurrency(currency.code);
+        },
+        () => setShowCurrencyPicker(false)
+      )}
     </View>
   );
 }
@@ -1256,490 +996,560 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.light.background,
   },
-  scrollView: {
-    flex: 1,
-  },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.base,
-    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.md,
     backgroundColor: COLORS.light.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.border,
   },
   headerTitle: {
     fontSize: TYPOGRAPHY.fontSize['2xl'],
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
-    marginLeft: SPACING.md,
-    letterSpacing: TYPOGRAPHY.letterSpacing.tight,
   },
-  headerIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.lg,
+  headerSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: SPACING.xs,
+  },
+  progressContainer: {
+    backgroundColor: COLORS.light.surface,
+    paddingHorizontal: SPACING.base,
+    paddingBottom: SPACING.md,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: COLORS.light.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary.accent,
+    borderRadius: 2,
+  },
+  stepsIndicator: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACING.md,
+  },
+  stepDot: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  dot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.light.border,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: SPACING.xs,
   },
-  section: {
-    marginBottom: SPACING.lg,
-    backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS['2xl'],
-    marginHorizontal: SPACING.base,
-    overflow: 'hidden',
-    ...SHADOWS.md,
+  dotActive: {
+    backgroundColor: COLORS.primary.accent,
   },
-  sectionHeader: {
-    padding: SPACING.base,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.light.divider,
-    backgroundColor: COLORS.light.surfaceSecondary,
+  dotCurrent: {
+    backgroundColor: COLORS.primary.accent,
+    borderWidth: 3,
+    borderColor: COLORS.primary.accentLight,
   },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.base,
+  dotText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.neutral[500],
+  },
+  dotTextActive: {
+    color: '#FFF',
+  },
+  stepLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    textAlign: 'center',
+  },
+  stepLabelActive: {
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  content: {
+    flex: 1,
+  },
+  stepContent: {
+    padding: SPACING.base,
+  },
+  stepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.border,
+  },
+  stepHeaderText: {
+    marginLeft: SPACING.md,
+  },
+  stepTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.light.text.primary,
   },
-  sectionContent: {
-    padding: SPACING.base,
+  stepSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    marginTop: SPACING.xs,
   },
   inputContainer: {
     marginBottom: SPACING.base,
   },
-  label: {
+  inputLabel: {
     fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
     color: COLORS.light.text.secondary,
     marginBottom: SPACING.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   input: {
+    backgroundColor: COLORS.light.surface,
     borderWidth: 1.5,
     borderColor: COLORS.light.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.light.text.primary,
-    backgroundColor: COLORS.light.surface,
-  },
-  saveButton: {
-    margin: SPACING.base,
-    borderRadius: RADIUS.xl,
-    overflow: 'hidden',
-    ...SHADOWS.lg,
-  },
-  saveButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.base,
-    paddingHorizontal: SPACING.xl,
-    gap: SPACING.sm,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  modalList: {
-    padding: 16,
-  },
-  modalItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  modalItemSelected: {
-    backgroundColor: '#00b51a15',
-  },
-  modalItemText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  modalItemTextSelected: {
-    color: '#00b51a',
-    fontWeight: '600',
   },
   selectInput: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.light.surface,
+    borderWidth: 1.5,
+    borderColor: COLORS.light.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
   },
-  selectInputText: {
-    fontSize: 16,
-    color: '#333',
+  selectText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+  },
+  selectPlaceholder: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.neutral[400],
+  },
+  infoCard: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    marginBottom: SPACING.lg,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+  },
+  infoLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  infoValue: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  exchangeCard: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+    marginTop: SPACING.md,
+  },
+  exchangeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  exchangeTitle: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginLeft: SPACING.sm,
+  },
+  exchangeList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  exchangeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.light.surfaceSecondary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    gap: SPACING.xs,
+  },
+  exchangeCurrency: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.secondary.gold,
+  },
+  exchangeRate: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
+  },
+  scanButton: {
+    marginBottom: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+  },
+  scanButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.md,
+    gap: SPACING.sm,
+  },
+  scanButtonText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFF',
   },
   productCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginBottom: 16,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: COLORS.light.border,
   },
   productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#f9f9f9',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    marginBottom: SPACING.md,
   },
   productTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  removeButton: {
-    padding: 4,
-  },
-  productFields: {
-    padding: 12,
-  },
-  productField: {
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  fieldLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-  },
-  fieldInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 8,
-    fontSize: 16,
-    color: '#333',
-    backgroundColor: '#fff',
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  addProductButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary.accent,
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    marginTop: SPACING.sm,
-    ...SHADOWS.sm,
-  },
-  addProductButtonText: {
-    color: '#fff',
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    marginLeft: SPACING.sm,
-  },
-  overviewOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  overviewContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    maxHeight: '90%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  overviewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  overviewTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  overviewScroll: {
-    padding: 16,
-  },
-  overviewSection: {
-    marginBottom: 20,
-  },
-  overviewSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  overviewSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginLeft: 8,
-  },
-  overviewDetails: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 12,
-  },
-  overviewRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    alignItems: 'flex-start',
-  },
-  overviewLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  overviewValue: {
-    flex: 2,
-    fontSize: 14,
-    color: '#333',
-  },
-  overviewProductCard: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  overviewProductHeader: {
-    backgroundColor: '#00b51a15',
-    padding: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  overviewProductTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#00b51a',
-  },
-  overviewActions: {
-    flexDirection: 'row',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    justifyContent: 'flex-end',
-  },
-  overviewButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginLeft: 12,
-  },
-  overviewCancelButton: {
-    backgroundColor: '#f5f5f5',
-  },
-  overviewConfirmButton: {
-    backgroundColor: '#00b51a',
-  },
-  overviewButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-  },
-  overviewConfirmText: {
-    color: '#fff',
-  },
-  mapContainer: {
-    height: 300,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  map: {
-    flex: 1,
-  },
-  markerContainer: {
-    backgroundColor: '#fff',
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#00b51a',
-  },
-  movingMarker: {
-    backgroundColor: '#fff',
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#00b51a',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  // Exchange Rate Styles
-  exchangeRateSection: {
-    backgroundColor: COLORS.light.surface,
-    marginHorizontal: SPACING.base,
-    marginBottom: SPACING.lg,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.base,
-    ...SHADOWS.sm,
-  },
-  exchangeRateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-    gap: SPACING.sm,
-  },
-  exchangeRateTitle: {
-    flex: 1,
     fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.primary,
   },
-  refreshButton: {
-    padding: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary.accent + '15',
+  productInput: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.sm,
   },
-  exchangeRateList: {
+  productRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  productInputHalf: {
+    flex: 1,
+  },
+  priceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  convertedPrice: {
+    backgroundColor: COLORS.secondary.gold + '20',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+  },
+  convertedPriceText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.secondary.gold,
+  },
+  addProductBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.md,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: COLORS.primary.accent,
+    borderRadius: RADIUS.xl,
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  addProductText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.primary.accent,
+  },
+  currencySection: {
+    marginBottom: SPACING.lg,
+  },
+  sectionLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.sm,
+  },
+  totalCard: {
+    backgroundColor: COLORS.primary.main,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    marginBottom: SPACING.lg,
+  },
+  totalLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.neutral[300],
+    marginBottom: SPACING.xs,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.md,
+  },
+  totalUSD: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFF',
+  },
+  totalConverted: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    color: COLORS.secondary.gold,
+  },
+  paymentMethods: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.sm,
   },
-  exchangeRateItem: {
-    backgroundColor: COLORS.light.surfaceSecondary,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.lg,
+  paymentMethod: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  exchangeRateCurrency: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.primary.main,
-  },
-  exchangeRateValue: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.secondary,
-  },
-  // Currency Selector Styles
-  currencySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: COLORS.light.surface,
     borderWidth: 1.5,
     borderColor: COLORS.light.border,
     borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    backgroundColor: COLORS.light.surface,
-  },
-  currencyText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.light.text.primary,
-  },
-  currencyItemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    flex: 1,
-  },
-  currencySymbol: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.primary.main,
-    width: 30,
-    textAlign: 'center',
-  },
-  currencyName: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.light.text.tertiary,
-  },
-  // Address Autocomplete Styles
-  addressInputWrapper: {
-    position: 'relative',
-    zIndex: 100,
-  },
-  addressInput: {
-    minHeight: 60,
-    textAlignVertical: 'top',
-    paddingTop: SPACING.md,
-  },
-  suggestionsContainer: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.light.surface,
-    borderRadius: RADIUS.lg,
-    marginTop: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.light.border,
-    ...SHADOWS.lg,
-    zIndex: 1000,
-    maxHeight: 200,
-  },
-  suggestionsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.light.divider,
     gap: SPACING.xs,
   },
-  suggestionsTitle: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
+  paymentMethodSelected: {
+    borderColor: COLORS.primary.accent,
+    backgroundColor: COLORS.primary.accent + '10',
+  },
+  paymentMethodText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
+  },
+  paymentMethodTextSelected: {
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  documentsSection: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
+  },
+  sectionTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
-    color: COLORS.primary.main,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.md,
   },
-  suggestionsList: {
-    maxHeight: 160,
+  passportPhotoBtn: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: COLORS.light.border,
   },
-  suggestionItem: {
+  passportImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  passportPlaceholder: {
+    height: 150,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  passportPlaceholderText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.neutral[400],
+    marginTop: SPACING.sm,
+  },
+  navigation: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.base,
+    paddingTop: SPACING.md,
+    backgroundColor: COLORS.light.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
+  },
+  backButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.light.divider,
+    padding: SPACING.md,
+    gap: SPACING.xs,
+  },
+  backButtonText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  nextButton: {
+    flex: 1,
+    marginLeft: SPACING.md,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+  },
+  nextButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.md,
     gap: SPACING.sm,
   },
-  suggestionText: {
+  nextButtonText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFF',
+  },
+  modalOverlay: {
     flex: 1,
-    fontSize: TYPOGRAPHY.fontSize.sm,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.light.surface,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.border,
+  },
+  modalTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.light.text.primary,
   },
-}); 
+  modalList: {
+    padding: SPACING.md,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.xs,
+  },
+  modalItemSelected: {
+    backgroundColor: COLORS.primary.accent + '15',
+  },
+  modalItemText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+  },
+  modalItemTextSelected: {
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.base,
+    paddingTop: 60,
+    paddingBottom: SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  scannerClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFF',
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerFrame: {
+    width: width * 0.75,
+    height: width * 0.5,
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderColor: COLORS.primary.accent,
+    borderWidth: 4,
+  },
+  topLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: RADIUS.lg,
+  },
+  topRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: RADIUS.lg,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: RADIUS.lg,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: RADIUS.lg,
+  },
+  scannerHint: {
+    marginTop: SPACING.xl,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: '#FFF',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+  },
+});
