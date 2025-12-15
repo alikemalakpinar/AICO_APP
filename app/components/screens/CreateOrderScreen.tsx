@@ -439,18 +439,79 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
 
   // Siparişi gönder
   const handleSubmit = async () => {
+    // Validasyon kontrolleri
+    if (!formData.customer.nameSurname.trim()) {
+      Alert.alert('Uyarı', 'Lütfen müşteri adı soyadı girin.');
+      return;
+    }
+    if (!formData.customer.country) {
+      Alert.alert('Uyarı', 'Lütfen ülke seçin.');
+      return;
+    }
+    if (!formData.customer.phone.trim()) {
+      Alert.alert('Uyarı', 'Lütfen telefon numarası girin.');
+      return;
+    }
+    if (!formData.customer.address.trim()) {
+      Alert.alert('Uyarı', 'Lütfen adres girin.');
+      return;
+    }
+    if (formData.products.filter(p => p.name.trim()).length === 0) {
+      Alert.alert('Uyarı', 'Lütfen en az bir ürün ekleyin.');
+      return;
+    }
+
     try {
       // Satış kullanıcıları için branchId'yi userBranchId'den al
       const finalBranchId = formData.branchId || userBranchId;
       const finalBranchName = formData.branchName || userBranchName || '';
 
+      // Products yapısını backend'in beklediği formata dönüştür
+      const formattedProducts = formData.products
+        .filter(p => p.name.trim())
+        .map(p => ({
+          name: p.name,
+          quantity: p.quantity || '1',
+          size: p.size || '',
+          price: p.priceUSD || '0', // Backend price alanını bekliyor
+          cost: '0',
+          notes: p.notes || '',
+          barcode: p.barcode || ''
+        }));
+
+      // Backend'in beklediği veri yapısını oluştur
       const orderData = {
-        ...formData,
-        branchId: finalBranchId,
-        branchName: finalBranchName,
+        date: formData.date,
+        order_no: formData.orderNo,
+        branch_id: finalBranchId,
+        branch_name: finalBranchName,
+        // Customer info - backend customerInfo veya düz alanları bekliyor
+        customerInfo: {
+          nameSurname: formData.customer.nameSurname,
+          email: formData.customer.email,
+          phone: formData.customer.phone,
+          address: formData.customer.address,
+          state: formData.customer.state,
+          city: formData.customer.city,
+          country: formData.customer.country,
+          zipCode: formData.customer.zipCode,
+          passportNo: formData.customer.passportNo,
+          taxNo: formData.customer.taxNo,
+        },
+        // Shipping info - backend shipping objesini bekliyor
+        shipping: {
+          salesman: formData.shipping.salesman,
+          conference: formData.shipping.conference,
+          cruise: formData.shipping.cruise,
+          agency: formData.shipping.agency,
+          guide: formData.shipping.guide,
+          pax: formData.shipping.pax,
+        },
+        products: formattedProducts,
+        payment_method: formData.paymentMethod,
         total: calculateTotal(),
         currency: selectedCurrency,
-        passportImage,
+        passport_image: passportImage,
         created_at: new Date().toISOString(),
       };
 

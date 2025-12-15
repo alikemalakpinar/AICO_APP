@@ -38,6 +38,8 @@ interface RecentOrder {
   date: string;
   process: string;
   products: string;
+  total: number;
+  currency: string;
 }
 
 interface Activity {
@@ -157,10 +159,12 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
       const recent = orders.slice(0, 5).map((order: any) => ({
         id: order.id,
         order_no: order.order_no,
-        customer_name: order.customer_name,
+        customer_name: order.customer_name || 'Müşteri',
         date: order.date,
         process: order.process,
-        products: order.products,
+        products: order.products || '[]',
+        total: order.total || 0,
+        currency: order.currency || 'USD',
       }));
 
       setRecentOrders(recent);
@@ -549,10 +553,11 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
             <View style={styles.recentOrdersList}>
               {recentOrders.map((order, index) => {
                 const statusConfig = getStatusConfig(order.process);
-                const total = calculateOrderTotal(order.products);
+                const total = order.total || calculateOrderTotal(order.products);
+                const currencySymbol = order.currency === 'EUR' ? '€' : order.currency === 'GBP' ? '£' : order.currency === 'TRY' ? '₺' : '$';
                 return (
                   <TouchableOpacity
-                    key={order.id}
+                    key={`recent-order-${order.id}`}
                     style={[
                       styles.recentOrderCard,
                       index === recentOrders.length - 1 && styles.lastOrderCard
@@ -568,7 +573,7 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
                       </ThemedText>
                     </View>
                     <View style={styles.orderRight}>
-                      <ThemedText style={styles.orderTotal}>{formatCurrency(total)}</ThemedText>
+                      <ThemedText style={styles.orderTotal}>{currencySymbol}{total.toFixed(2)}</ThemedText>
                       <View style={[styles.orderStatusBadge, { backgroundColor: statusConfig.bgColor }]}>
                         <ThemedText style={[styles.orderStatusText, { color: statusConfig.textColor }]}>
                           {statusConfig.label}
