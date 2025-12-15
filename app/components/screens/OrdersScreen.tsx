@@ -229,6 +229,49 @@ _Koyuncu Halı_
     }
   };
 
+  const sendEmailToCustomer = (order: Order) => {
+    const products: Product[] = JSON.parse(order.products);
+    const total = calculateOrderTotal(products);
+
+    const productsList = products.map(p =>
+      `• ${p.name} (${p.quantity} adet) - ${formatCurrency(parseFloat(p.price))}`
+    ).join('\n');
+
+    const subject = encodeURIComponent(`Sipariş #${order.order_no} - Detayları`);
+    const body = encodeURIComponent(`
+Sayın ${order.customer_name},
+
+Siparişiniz ile ilgili detaylar aşağıdaki gibidir:
+
+SİPARİŞ BİLGİLERİ
+━━━━━━━━━━━━━━━━━
+Sipariş No: #${order.order_no}
+Tarih: ${new Date(order.date).toLocaleDateString('tr-TR')}
+Durum: ${order.process}
+
+ÜRÜNLER
+━━━━━━━━━━━━━━━━━
+${productsList}
+
+TOPLAM: ${formatCurrency(total)}
+
+İyi günler dileriz.
+    `);
+
+    if (order.customer_email) {
+      Linking.openURL(`mailto:${order.customer_email}?subject=${subject}&body=${body}`);
+    } else {
+      Alert.alert(
+        'E-posta Adresi Yok',
+        'Müşterinin e-posta adresi kayıtlı değil. Manuel olarak e-posta göndermek ister misiniz?',
+        [
+          { text: 'İptal', style: 'cancel' },
+          { text: 'Evet', onPress: () => Linking.openURL(`mailto:?subject=${subject}&body=${body}`) }
+        ]
+      );
+    }
+  };
+
   const getFilterCount = (filterKey: FilterKey) => {
     if (filterKey === 'all') return orders.length;
     const filter = statusFilters.find(f => f.key === filterKey);
@@ -492,6 +535,13 @@ _Koyuncu Halı_
               >
                 <IconSymbol name="whatsapp" size={20} color="#25D366" />
                 <ThemedText style={[styles.actionBtnText, { color: '#25D366' }]}>WhatsApp</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.emailBtn]}
+                onPress={() => sendEmailToCustomer(selectedOrder)}
+              >
+                <IconSymbol name="email-outline" size={20} color={COLORS.primary.accent} />
+                <ThemedText style={[styles.actionBtnText, { color: COLORS.primary.accent }]}>E-posta</ThemedText>
               </TouchableOpacity>
             </View>
 
@@ -1066,6 +1116,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#E7F9EE',
     borderWidth: 1,
     borderColor: '#25D36630',
+  },
+  emailBtn: {
+    backgroundColor: COLORS.primary.accent + '15',
+    borderWidth: 1,
+    borderColor: COLORS.primary.accent + '30',
   },
   actionBtnText: {
     fontSize: TYPOGRAPHY.fontSize.base,

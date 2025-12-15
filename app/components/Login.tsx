@@ -491,58 +491,67 @@ export default function Login() {
     }
 
     if (salesStep === 2) {
+      // Netflix style profile colors
+      const profileColors = [
+        ['#8B1538', '#C41E3A'], // Burgundy
+        ['#C9A227', '#9C7B16'], // Gold
+        ['#2E8B8B', '#1F6E6E'], // Teal
+        ['#2E7D32', '#1B5E20'], // Green
+        ['#1565C0', '#0D47A1'], // Blue
+        ['#7B1FA2', '#4A148C'], // Purple
+      ];
+
       return (
-        <View style={styles.salesStepContainer}>
-          <TouchableOpacity style={styles.backButton} onPress={handleSalesBack}>
-            <IconSymbol name="arrow-left" size={20} color={COLORS.primary.accent} />
-            <ThemedText style={styles.backButtonText}>Geri</ThemedText>
+        <View style={styles.netflixContainer}>
+          <TouchableOpacity style={styles.netflixBackButton} onPress={handleSalesBack}>
+            <IconSymbol name="arrow-left" size={24} color="#FFF" />
           </TouchableOpacity>
 
-          <View style={styles.selectedBranchBadge}>
-            <IconSymbol name="store" size={16} color={COLORS.primary.main} />
-            <ThemedText style={styles.selectedBranchText}>{selectedBranch?.name}</ThemedText>
-          </View>
-
-          <View style={styles.stepHeader}>
-            <View style={styles.stepBadge}>
-              <ThemedText style={styles.stepBadgeText}>2</ThemedText>
-            </View>
-            <ThemedText style={styles.stepTitle}>Çalışan Seçin</ThemedText>
+          <View style={styles.netflixHeader}>
+            <ThemedText style={styles.netflixBranchName}>{selectedBranch?.name}</ThemedText>
+            <ThemedText style={styles.netflixTitle}>Kim giriş yapıyor?</ThemedText>
           </View>
 
           {isLoading ? (
-            <ActivityIndicator size="large" color={COLORS.primary.main} style={{ marginTop: 40 }} />
+            <ActivityIndicator size="large" color="#FFF" style={{ marginTop: 80 }} />
           ) : (
-            <FlatList
-              data={employees}
-              keyExtractor={(item) => item.id.toString()}
-              style={styles.branchList}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.employeeItem}
-                  onPress={() => handleEmployeeSelect(item)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.employeeAvatar}>
-                    <ThemedText style={styles.employeeAvatarText}>
-                      {item.Ad_Soyad.charAt(0).toUpperCase()}
+            <View style={styles.netflixProfileGrid}>
+              {employees.map((item, index) => {
+                const colorIndex = index % profileColors.length;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.netflixProfileCard}
+                    onPress={() => handleEmployeeSelect(item)}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={profileColors[colorIndex] as [string, string]}
+                      style={styles.netflixAvatar}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <ThemedText style={styles.netflixAvatarText}>
+                        {item.Ad_Soyad.split(' ').map(n => n.charAt(0)).join('').slice(0, 2).toUpperCase()}
+                      </ThemedText>
+                    </LinearGradient>
+                    <ThemedText style={styles.netflixProfileName} numberOfLines={1}>
+                      {item.Ad_Soyad}
                     </ThemedText>
-                  </View>
-                  <View style={styles.employeeInfo}>
-                    <ThemedText style={styles.employeeName}>{item.Ad_Soyad}</ThemedText>
-                    <ThemedText style={styles.employeeRole}>{item.yetki}</ThemedText>
-                  </View>
-                  <IconSymbol name="chevron-right" size={24} color={COLORS.neutral[400]} />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <IconSymbol name="account-off" size={48} color={COLORS.neutral[300]} />
-                  <ThemedText style={styles.emptyText}>Bu şubede çalışan bulunamadı</ThemedText>
-                </View>
-              }
-            />
+                    <ThemedText style={styles.netflixProfileRole}>
+                      {item.yetki}
+                    </ThemedText>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {employees.length === 0 && !isLoading && (
+            <View style={styles.netflixEmptyContainer}>
+              <IconSymbol name="account-off" size={64} color="rgba(255,255,255,0.3)" />
+              <ThemedText style={styles.netflixEmptyText}>Bu şubede çalışan bulunamadı</ThemedText>
+            </View>
           )}
         </View>
       );
@@ -1348,5 +1357,90 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: '#fff',
     fontWeight: TYPOGRAPHY.fontWeight.bold,
+  },
+  // Netflix Style Profile Selection
+  netflixContainer: {
+    flex: 1,
+    backgroundColor: COLORS.primary.main,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING.lg,
+    marginTop: -SPACING.base,
+  },
+  netflixBackButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  netflixHeader: {
+    alignItems: 'center',
+    marginBottom: SPACING['2xl'],
+  },
+  netflixBranchName: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+  },
+  netflixTitle: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  netflixProfileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+  },
+  netflixProfileCard: {
+    alignItems: 'center',
+    width: (width - 120) / 2,
+    paddingVertical: SPACING.md,
+  },
+  netflixAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: RADIUS.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.lg,
+    marginBottom: SPACING.md,
+  },
+  netflixAvatarText: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
+  },
+  netflixProfileName: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  netflixProfileRole: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  netflixEmptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: SPACING['4xl'],
+  },
+  netflixEmptyText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: SPACING.md,
+    textAlign: 'center',
   },
 });

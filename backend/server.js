@@ -294,11 +294,10 @@ db.exec(`
 const branchCount = db.prepare('SELECT COUNT(*) as count FROM subeler').get();
 if (branchCount.count === 0) {
   const branches = [
-    { name: 'İstanbul Merkez', code: 'IST-001', city: 'İstanbul', state: 'Marmara', address: 'Kapalıçarşı No:45' },
-    { name: 'Ankara Şube', code: 'ANK-001', city: 'Ankara', state: 'İç Anadolu', address: 'Kızılay Merkez' },
-    { name: 'İzmir Şube', code: 'IZM-001', city: 'İzmir', state: 'Ege', address: 'Konak Meydanı' },
-    { name: 'Antalya Şube', code: 'ANT-001', city: 'Antalya', state: 'Akdeniz', address: 'Kaleiçi' },
-    { name: 'Bursa Şube', code: 'BRS-001', city: 'Bursa', state: 'Marmara', address: 'Osmangazi' }
+    { name: 'Bilgins ByKync', code: 'BYK-001', city: 'İstanbul', state: 'Marmara', address: 'Kapalıçarşı No:45' },
+    { name: 'PashaPort Rug & Jewellery', code: 'PPR-001', city: 'İstanbul', state: 'Marmara', address: 'Sultanahmet' },
+    { name: 'Pasha Rug Village', code: 'PRV-001', city: 'İstanbul', state: 'Marmara', address: 'Arasta Bazaar' },
+    { name: 'ByHand Rugs', code: 'BHR-001', city: 'İstanbul', state: 'Marmara', address: 'Grand Bazaar' }
   ];
 
   const insertBranch = db.prepare(`
