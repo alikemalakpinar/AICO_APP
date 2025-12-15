@@ -32,6 +32,10 @@ export const COLORS = {
     silver: '#8A8A8A',
     teal: '#2E8B8B',
     emerald: '#2E7D32',
+    purple: '#7B1FA2',
+    pink: '#C2185B',
+    cyan: '#00838F',
+    orange: '#EF6C00',
   },
 
   // Neutral Grays - Professional Scale
@@ -150,6 +154,10 @@ export const COLORS = {
     gold: ['#C9A227', '#9C7B16'],
     burgundy: ['#8B1538', '#C41E3A'],
     teal: ['#2E8B8B', '#1F6E6E'],
+    purple: ['#7B1FA2', '#4A148C'],
+    cyan: ['#00838F', '#006064'],
+    pink: ['#C2185B', '#880E4F'],
+    orange: ['#EF6C00', '#E65100'],
     dark: ['#2D2D44', '#1A1A2E'],
     darkReverse: ['#1A1A2E', '#2D2D44'],
     glass: ['rgba(255,255,255,0.98)', 'rgba(255,255,255,0.90)'],
