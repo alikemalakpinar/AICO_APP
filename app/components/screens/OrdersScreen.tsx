@@ -12,6 +12,7 @@ import {
   StatusBar,
   Linking,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import ThemedText from '../ThemedText';
@@ -58,6 +59,8 @@ interface StatusFilter {
 }
 
 export default function OrdersScreen() {
+  const { width: screenWidth } = useWindowDimensions();
+  const isTablet = screenWidth >= 600;
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -599,14 +602,17 @@ TOPLAM: ${formatCurrency(total)}
       <StatusBar barStyle="dark-content" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[
+        styles.header,
+        isTablet && { paddingHorizontal: SPACING.xl, maxWidth: 900, alignSelf: 'center', width: '100%' }
+      ]}>
         <View style={styles.headerTop}>
-          <ThemedText style={styles.headerTitle}>Siparişler</ThemedText>
+          <ThemedText style={[styles.headerTitle, isTablet && { fontSize: TYPOGRAPHY.fontSize['2xl'] }]}>Siparişler</ThemedText>
           <ThemedText style={styles.headerSubtitle}>{orders.length} sipariş</ThemedText>
         </View>
 
         {/* Search */}
-        <View style={styles.searchContainer}>
+        <View style={[styles.searchContainer, isTablet && { maxWidth: 500 }]}>
           <IconSymbol name="magnify" size={20} color={COLORS.light.text.tertiary} />
           <TextInput
             style={styles.searchInput}
@@ -629,7 +635,10 @@ TOPLAM: ${formatCurrency(total)}
       {/* Orders List */}
       <ScrollView
         style={styles.ordersList}
-        contentContainerStyle={styles.ordersListContent}
+        contentContainerStyle={[
+          styles.ordersListContent,
+          isTablet && { paddingHorizontal: SPACING.xl, maxWidth: 900, alignSelf: 'center', width: '100%' }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary.main} />
@@ -643,7 +652,7 @@ TOPLAM: ${formatCurrency(total)}
         ) : (
           filteredOrders.map((order, index) => renderOrderCard(order, index))
         )}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       {renderDetailModal()}

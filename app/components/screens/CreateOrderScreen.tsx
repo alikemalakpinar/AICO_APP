@@ -1,4 +1,4 @@
-import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Platform, Modal, Animated, Dimensions, Alert, StatusBar, ActivityIndicator, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Platform, Modal, Animated, Dimensions, Alert, StatusBar, ActivityIndicator, Image, useWindowDimensions } from 'react-native';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
@@ -12,6 +12,13 @@ import { API_ENDPOINTS, fetchWithTimeout, API_BASE_URL } from '../../../constant
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
 
 const { width, height } = Dimensions.get('window');
+
+// Tablet/iPad detection
+const isTablet = () => {
+  const { width, height } = Dimensions.get('window');
+  const aspectRatio = height / width;
+  return Math.min(width, height) >= 600 && aspectRatio < 1.6;
+};
 
 // Ödeme yöntemleri
 const PAYMENT_METHODS = [
@@ -157,6 +164,8 @@ interface CreateOrderScreenProps {
 
 export default function CreateOrderScreen({ userBranchId, userBranchName, userRole }: CreateOrderScreenProps) {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isTabletDevice = screenWidth >= 600;
   const [currentStep, setCurrentStep] = useState(1);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showStatePicker, setShowStatePicker] = useState(false);
@@ -939,38 +948,68 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: 180,
+          paddingHorizontal: isTabletDevice ? SPACING.xl : 0,
+          maxWidth: isTabletDevice ? 800 : '100%',
+          alignSelf: 'center',
+          width: '100%'
+        }}
+      >
         {currentStep === 1 && renderStep1()}
         {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep3()}
         {currentStep === 4 && renderStep4()}
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Navigation Buttons */}
-      <View style={[styles.navigation, { paddingBottom: insets.bottom + SPACING.md }]}>
-        {currentStep > 1 ? (
-          <TouchableOpacity style={styles.backButton} onPress={prevStep}>
-            <IconSymbol name="chevron-left" size={20} color={COLORS.primary.accent} />
-            <ThemedText style={styles.backButtonText}>Geri</ThemedText>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 80 }} />
-        )}
+      {/* Navigation Buttons - Fixed at bottom */}
+      <View style={[
+        styles.navigation,
+        {
+          paddingBottom: Math.max(insets.bottom, 20) + 70,
+          paddingHorizontal: isTabletDevice ? SPACING.xl : SPACING.base,
+        }
+      ]}>
+        <View style={[
+          styles.navigationInner,
+          isTabletDevice && { maxWidth: 800, alignSelf: 'center', width: '100%' }
+        ]}>
+          {currentStep > 1 ? (
+            <TouchableOpacity style={styles.backButton} onPress={prevStep}>
+              <IconSymbol name="chevron-left" size={20} color={COLORS.primary.accent} />
+              <ThemedText style={styles.backButtonText}>Geri</ThemedText>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 80 }} />
+          )}
 
-        <TouchableOpacity style={[styles.nextButton, currentStep === 1 && { marginLeft: 0 }]} onPress={nextStep}>
-          <LinearGradient
-            colors={COLORS.gradients.primary as [string, string]}
-            style={styles.nextButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              isTabletDevice && { maxWidth: 300 }
+            ]}
+            onPress={nextStep}
+            activeOpacity={0.8}
           >
-            <ThemedText style={styles.nextButtonText}>
-              {currentStep === STEPS.length ? 'Siparişi Tamamla' : 'Devam'}
-            </ThemedText>
-            <IconSymbol name={currentStep === STEPS.length ? 'check' : 'chevron-right'} size={20} color="#FFF" />
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={COLORS.gradients.primary as [string, string]}
+              style={styles.nextButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <ThemedText style={[
+                styles.nextButtonText,
+                isTabletDevice && { fontSize: TYPOGRAPHY.fontSize.lg }
+              ]}>
+                {currentStep === STEPS.length ? 'Siparişi Tamamla' : 'Devam'}
+              </ThemedText>
+              <IconSymbol name={currentStep === STEPS.length ? 'check' : 'chevron-right'} size={22} color="#FFF" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Modals */}
@@ -1422,14 +1461,20 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   navigation: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.base,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingTop: SPACING.md,
     backgroundColor: COLORS.light.surface,
     borderTopWidth: 1,
     borderTopColor: COLORS.light.border,
+    ...SHADOWS.lg,
+  },
+  navigationInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   backButton: {
     flexDirection: 'row',
@@ -1447,18 +1492,23 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.md,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
+    minHeight: 52,
+    ...SHADOWS.md,
   },
   nextButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
     gap: SPACING.sm,
+    minHeight: 52,
   },
   nextButtonText: {
     fontSize: TYPOGRAPHY.fontSize.base,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: '#FFF',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

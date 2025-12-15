@@ -9,6 +9,7 @@ import {
   RefreshControl,
   StatusBar,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -58,6 +59,8 @@ interface HomeScreenProps {
 }
 
 export default function HomeScreen({ onTabChange, userName, userRole, permissions = [], canCreateOrder = true }: HomeScreenProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const isTablet = screenWidth >= 600;
   const [stats, setStats] = useState<OrderStats>({
     totalOrders: 0,
     monthlyRevenue: 0,
@@ -362,7 +365,15 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isTablet && {
+            paddingHorizontal: SPACING.xl,
+            maxWidth: 900,
+            alignSelf: 'center',
+            width: '100%',
+          }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -458,8 +469,8 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
 
         {/* Status Grid */}
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Sipariş Durumları</ThemedText>
-          <View style={styles.statusGrid}>
+          <ThemedText style={[styles.sectionTitle, isTablet && { fontSize: TYPOGRAPHY.fontSize.xl }]}>Sipariş Durumları</ThemedText>
+          <View style={[styles.statusGrid, isTablet && { gap: SPACING.lg }]}>
             {statusCards.map((card, index) => (
               <Animated.View
                 key={card.title}
@@ -493,8 +504,8 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
 
         {/* Quick Actions */}
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Hızlı İşlemler</ThemedText>
-          <View style={styles.actionsGrid}>
+          <ThemedText style={[styles.sectionTitle, isTablet && { fontSize: TYPOGRAPHY.fontSize.xl }]}>Hızlı İşlemler</ThemedText>
+          <View style={[styles.actionsGrid, isTablet && { gap: SPACING.lg }]}>
             {quickActions.map((action, index) => (
               <TouchableOpacity
                 key={action.title}
@@ -780,6 +791,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: SPACING.md,
+    paddingBottom: 120,
   },
 
   // Header
