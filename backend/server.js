@@ -169,6 +169,9 @@ db.exec(`
     customer_state TEXT,
     customer_phone TEXT,
     customer_email TEXT,
+    customer_zip_code TEXT,
+    customer_passport_no TEXT,
+    customer_tax_no TEXT,
     shipping_address TEXT,
     shipping_city TEXT,
     shipping_state TEXT,
@@ -177,8 +180,10 @@ db.exec(`
     salesman TEXT,
     salesman_id INTEGER,
     conference TEXT,
+    cruise TEXT,
     agency TEXT,
     guide TEXT,
+    pax TEXT,
     products TEXT,
     subtotal REAL DEFAULT 0,
     discount REAL DEFAULT 0,
@@ -187,9 +192,12 @@ db.exec(`
     total REAL DEFAULT 0,
     currency TEXT DEFAULT 'TRY',
     exchange_rate REAL DEFAULT 1,
+    payment_method TEXT,
     process TEXT DEFAULT 'Sipariş Oluşturuldu',
     payment_status TEXT DEFAULT 'pending',
     photos TEXT,
+    passport_image TEXT,
+    customer_signature TEXT,
     cargo_company TEXT,
     cargo_tracking TEXT,
     bus_number TEXT,
@@ -204,6 +212,29 @@ db.exec(`
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// Migration: Add new columns to siparisler table if they don't exist
+const siparislerColumns = db.prepare("PRAGMA table_info(siparisler)").all().map(c => c.name);
+const newColumns = [
+  { name: 'customer_zip_code', type: 'TEXT' },
+  { name: 'customer_passport_no', type: 'TEXT' },
+  { name: 'customer_tax_no', type: 'TEXT' },
+  { name: 'cruise', type: 'TEXT' },
+  { name: 'pax', type: 'TEXT' },
+  { name: 'payment_method', type: 'TEXT' },
+  { name: 'passport_image', type: 'TEXT' },
+  { name: 'customer_signature', type: 'TEXT' }
+];
+newColumns.forEach(col => {
+  if (!siparislerColumns.includes(col.name)) {
+    try {
+      db.exec(`ALTER TABLE siparisler ADD COLUMN ${col.name} ${col.type}`);
+      console.log(`Added column ${col.name} to siparisler table`);
+    } catch (e) {
+      // Column might already exist
+    }
+  }
+});
 
 // Odemeler (Payments) tablosu
 db.exec(`
@@ -1454,7 +1485,7 @@ app.post('/api/orders', (req, res) => {
   const orderData = req.body;
 
   try {
-    const orderNo = generateOrderNumber();
+    const orderNo = orderData.order_no || generateOrderNumber();
 
     // Calculate totals
     let subtotal = 0;
@@ -1467,15 +1498,15 @@ app.post('/api/orders', (req, res) => {
 
     const discount = parseFloat(orderData.discount) || 0;
     const tax = parseFloat(orderData.tax) || 0;
-    const total = subtotal - discount + tax;
+    const total = orderData.total || (subtotal - discount + tax);
 
     const stmt = db.prepare(`
       INSERT INTO siparisler (date, order_no, order_type, branch_id, location, customer_id, customer_name, customer_address,
-        customer_country, customer_city, customer_state, customer_phone, customer_email,
+        customer_country, customer_city, customer_state, customer_phone, customer_email, customer_zip_code, customer_passport_no, customer_tax_no,
         shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
-        salesman, salesman_id, conference, agency, guide, products, subtotal, discount, discount_type, tax, total, currency, exchange_rate,
-        process, payment_status, notes, internal_notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        salesman, salesman_id, conference, cruise, agency, guide, pax, products, subtotal, discount, discount_type, tax, total, currency, exchange_rate,
+        payment_method, process, payment_status, passport_image, customer_signature, notes, internal_notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -1492,6 +1523,9 @@ app.post('/api/orders', (req, res) => {
       orderData.customerInfo?.state || orderData.customer_state,
       orderData.customerInfo?.phone || orderData.customer_phone,
       orderData.customerInfo?.email || orderData.customer_email,
+      orderData.customerInfo?.zipCode || orderData.customer_zip_code,
+      orderData.customerInfo?.passportNo || orderData.customer_passport_no,
+      orderData.customerInfo?.taxNo || orderData.customer_tax_no,
       orderData.shipping_address,
       orderData.shipping_city,
       orderData.shipping_state,
@@ -1500,18 +1534,23 @@ app.post('/api/orders', (req, res) => {
       orderData.shipping?.salesman || orderData.salesman,
       orderData.salesman_id,
       orderData.shipping?.conference || orderData.conference,
+      orderData.shipping?.cruise || orderData.cruise,
       orderData.shipping?.agency || orderData.agency,
       orderData.shipping?.guide || orderData.guide,
+      orderData.shipping?.pax || orderData.pax,
       JSON.stringify(products),
       subtotal,
       discount,
       orderData.discount_type || 'amount',
       tax,
       total,
-      orderData.currency || 'TRY',
+      orderData.currency || 'USD',
       orderData.exchange_rate || 1,
+      orderData.payment_method,
       'Sipariş Oluşturuldu',
       'pending',
+      orderData.passport_image,
+      orderData.customer_signature,
       orderData.notes,
       orderData.internal_notes,
       orderData.created_by
@@ -1737,6 +1776,35 @@ app.put('/api/orders/:id/process', (req, res) => {
   } catch (error) {
     console.error('Durum guncelleme hatasi:', error);
     res.status(500).json({ error: 'Siparis durumu guncellenemedi' });
+  }
+});
+
+// Siparis imzasini guncelle
+app.put('/api/orders/:id/signature', (req, res) => {
+  const { id } = req.params;
+  const { customer_signature, updated_by } = req.body;
+
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    db.prepare(`
+      UPDATE siparisler
+      SET customer_signature = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(customer_signature, updated_by, id);
+
+    logActivity(updated_by, null, 'update_signature', 'order', id, order.order_no, null, { signature_added: true }, 'Musteri imzasi eklendi', order.branch_id);
+
+    res.json({
+      message: 'Imza basariyla kaydedildi',
+      orderId: id
+    });
+  } catch (error) {
+    console.error('Imza kaydetme hatasi:', error);
+    res.status(500).json({ error: 'Imza kaydedilemedi' });
   }
 });
 
