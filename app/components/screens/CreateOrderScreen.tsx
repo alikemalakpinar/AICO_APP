@@ -799,7 +799,7 @@ export default function CreateOrderScreen() {
           <ScrollView style={styles.modalList}>
             {items.map((item, index) => (
               <TouchableOpacity
-                key={index}
+                key={`${item}-${index}`}
                 style={[styles.modalItem, selectedValue === item && styles.modalItemSelected]}
                 onPress={() => { onSelect(item); onClose(); }}
               >
@@ -909,14 +909,16 @@ export default function CreateOrderScreen() {
 
       {/* Navigation Buttons */}
       <View style={[styles.navigation, { paddingBottom: insets.bottom + SPACING.md }]}>
-        {currentStep > 1 && (
+        {currentStep > 1 ? (
           <TouchableOpacity style={styles.backButton} onPress={prevStep}>
             <IconSymbol name="chevron-left" size={20} color={COLORS.primary.accent} />
             <ThemedText style={styles.backButtonText}>Geri</ThemedText>
           </TouchableOpacity>
+        ) : (
+          <View style={{ width: 80 }} />
         )}
 
-        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+        <TouchableOpacity style={[styles.nextButton, currentStep === 1 && { marginLeft: 0 }]} onPress={nextStep}>
           <LinearGradient
             colors={COLORS.gradients.primary as [string, string]}
             style={styles.nextButtonGradient}
