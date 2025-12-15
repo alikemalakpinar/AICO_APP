@@ -12,6 +12,8 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ThemedText from './ThemedText';
@@ -27,11 +29,20 @@ import { API_ENDPOINTS, fetchWithTimeout } from '../../constants/Api';
 const { width, height } = Dimensions.get('window');
 const SESSION_KEY = 'user_session';
 
+interface Branch {
+  id: number;
+  name: string;
+  address: string;
+  is_active: boolean;
+}
+
 interface UserSession {
   userName: string;
   userRole: string;
   permissions: string[];
   email: string;
+  branchId?: number;
+  branchName?: string;
 }
 
 export default function Login() {
@@ -41,6 +52,10 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const [showBranchSelector, setShowBranchSelector] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  const [pendingUserData, setPendingUserData] = useState<any>(null);
   const insets = useSafeAreaInsets();
 
   const [loginData, setLoginData] = useState({
@@ -98,6 +113,51 @@ export default function Login() {
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
     } catch (error) {
       console.error('Failed to save session:', error);
+    }
+  };
+
+  const fetchBranches = async () => {
+    try {
+      const response = await fetchWithTimeout(`${API_ENDPOINTS.orders.replace('/api/orders', '/api/branches')}`, {}, 10000);
+      const data = await response.json();
+      const activeBranches = data.filter((b: Branch) => b.is_active);
+      setBranches(activeBranches);
+      return activeBranches;
+    } catch (error) {
+      console.error('Branch fetch error:', error);
+      return [];
+    }
+  };
+
+  const proceedToMainScreen = async (userData: any, branch: Branch | null) => {
+    const sessionData: UserSession = {
+      userName: userData.Ad_Soyad,
+      userRole: userData.yetki,
+      permissions: userData.permissions || [],
+      email: loginData.email,
+      branchId: branch?.id,
+      branchName: branch?.name,
+    };
+
+    await saveSession(sessionData);
+
+    router.replace({
+      pathname: '/components/MainScreen',
+      params: {
+        userName: userData.Ad_Soyad,
+        userRole: userData.yetki,
+        permissions: JSON.stringify(userData.permissions),
+        branchId: branch?.id?.toString() || '',
+        branchName: branch?.name || '',
+      }
+    });
+  };
+
+  const handleBranchSelect = async (branch: Branch) => {
+    setSelectedBranch(branch);
+    setShowBranchSelector(false);
+    if (pendingUserData) {
+      await proceedToMainScreen(pendingUserData, branch);
     }
   };
 
@@ -196,21 +256,20 @@ export default function Login() {
         throw new Error(data.error || 'Giris basarisiz');
       }
 
-      await saveSession({
-        userName: data.Ad_Soyad,
-        userRole: data.yetki,
-        permissions: data.permissions || [],
-        email: loginData.email,
-      });
+      // Fetch branches to see if user needs to select one
+      const availableBranches = await fetchBranches();
 
-      router.replace({
-        pathname: '/components/MainScreen',
-        params: {
-          userName: data.Ad_Soyad,
-          userRole: data.yetki,
-          permissions: JSON.stringify(data.permissions)
-        }
-      });
+      if (availableBranches.length > 1) {
+        // Multiple branches - show selector
+        setPendingUserData(data);
+        setShowBranchSelector(true);
+      } else if (availableBranches.length === 1) {
+        // Single branch - auto-select
+        await proceedToMainScreen(data, availableBranches[0]);
+      } else {
+        // No branches - proceed without branch
+        await proceedToMainScreen(data, null);
+      }
     } catch (error: any) {
       Alert.alert('Hata', error.message || 'Sunucuya baglanilamadi. Backend calistigini kontrol edin.');
     } finally {
@@ -547,6 +606,80 @@ export default function Login() {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Branch Selection Modal */}
+      <Modal
+        visible={showBranchSelector}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowBranchSelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.branchModalContainer}>
+            <LinearGradient
+              colors={COLORS.gradients.primary as [string, string]}
+              style={styles.branchModalHeader}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <IconSymbol name="store" size={32} color="#FFFFFF" />
+              <ThemedText style={styles.branchModalTitle}>Şube Seçin</ThemedText>
+              <ThemedText style={styles.branchModalSubtitle}>
+                Çalışmak istediğiniz şubeyi seçin
+              </ThemedText>
+            </LinearGradient>
+
+            <FlatList
+              data={branches}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={styles.branchList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.branchItem,
+                    selectedBranch?.id === item.id && styles.branchItemSelected
+                  ]}
+                  onPress={() => handleBranchSelect(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.branchIconContainer}>
+                    <IconSymbol
+                      name="store-outline"
+                      size={24}
+                      color={selectedBranch?.id === item.id ? COLORS.primary.main : COLORS.neutral[400]}
+                    />
+                  </View>
+                  <View style={styles.branchInfo}>
+                    <ThemedText style={styles.branchName}>{item.name}</ThemedText>
+                    {item.address && (
+                      <ThemedText style={styles.branchAddress}>{item.address}</ThemedText>
+                    )}
+                  </View>
+                  <IconSymbol
+                    name="chevron-right"
+                    size={24}
+                    color={COLORS.neutral[300]}
+                  />
+                </TouchableOpacity>
+              )}
+            />
+
+            <TouchableOpacity
+              style={styles.branchModalCloseButton}
+              onPress={() => {
+                setShowBranchSelector(false);
+                if (pendingUserData && branches.length > 0) {
+                  proceedToMainScreen(pendingUserData, branches[0]);
+                }
+              }}
+            >
+              <ThemedText style={styles.branchModalCloseText}>
+                Varsayılan ile devam et
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -805,5 +938,84 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: '#fff',
     fontWeight: TYPOGRAPHY.fontWeight.bold,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  branchModalContainer: {
+    backgroundColor: COLORS.light.surface,
+    borderTopLeftRadius: RADIUS['3xl'],
+    borderTopRightRadius: RADIUS['3xl'],
+    maxHeight: height * 0.7,
+    ...SHADOWS['2xl'],
+  },
+  branchModalHeader: {
+    padding: SPACING.xl,
+    borderTopLeftRadius: RADIUS['3xl'],
+    borderTopRightRadius: RADIUS['3xl'],
+    alignItems: 'center',
+  },
+  branchModalTitle: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFFFFF',
+    marginTop: SPACING.md,
+  },
+  branchModalSubtitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: SPACING.xs,
+  },
+  branchList: {
+    padding: SPACING.base,
+  },
+  branchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    marginBottom: SPACING.md,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  branchItemSelected: {
+    borderColor: COLORS.primary.main,
+    backgroundColor: COLORS.primary.main + '10',
+  },
+  branchIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.light.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  branchInfo: {
+    flex: 1,
+  },
+  branchName: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+    marginBottom: 2,
+  },
+  branchAddress: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  branchModalCloseButton: {
+    padding: SPACING.base,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
+  },
+  branchModalCloseText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
   },
 });
