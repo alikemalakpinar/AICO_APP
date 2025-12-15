@@ -14,6 +14,23 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // SQLite veritabani baglantisi
 const dbPath = path.join(__dirname, 'database.sqlite');
+
+// Veritabani dosyasi var mi kontrol et, yoksa veya sorunluysa sil ve yeniden olustur
+const fs = require('fs');
+try {
+  // Dosya varsa yazma izni kontrol et
+  if (fs.existsSync(dbPath)) {
+    fs.accessSync(dbPath, fs.constants.W_OK);
+  }
+} catch (err) {
+  console.log('Veritabani dosyasi yazilabilir degil, yeniden olusturuluyor...');
+  try {
+    fs.unlinkSync(dbPath);
+  } catch (e) {
+    // Dosya silinemezse devam et
+  }
+}
+
 const db = sqlite3(dbPath);
 
 // ==================== DATABASE TABLES ====================
