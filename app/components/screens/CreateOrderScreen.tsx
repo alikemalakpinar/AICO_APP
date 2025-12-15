@@ -187,7 +187,7 @@ export default function CreateOrderScreen() {
 
     // Ürün Bilgileri
     products: [{
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: '',
       quantity: '1',
       size: '',
@@ -357,7 +357,7 @@ export default function CreateOrderScreen() {
   // Ürün ekleme/silme
   const addProduct = () => {
     const newProduct: Product = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: '',
       quantity: '1',
       size: '',
@@ -437,7 +437,7 @@ export default function CreateOrderScreen() {
       branchId: null,
       branchName: '',
       shipping: { salesman: '', conference: '', cruise: '', agency: '', guide: '', pax: '' },
-      products: [{ id: Date.now().toString(), name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '' }],
+      products: [{ id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '' }],
       paymentMethod: '',
       customer: { nameSurname: '', email: '', phone: '', address: '', state: '', city: '', zipCode: '', country: '', passportNo: '', taxNo: '' },
     });

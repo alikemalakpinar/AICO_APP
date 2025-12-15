@@ -12,7 +12,6 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
-  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ThemedText from './ThemedText';
@@ -451,41 +450,39 @@ export default function Login() {
             <ThemedText style={styles.stepTitle}>Şube Seçin</ThemedText>
           </View>
 
-          <FlatList
-            data={branches}
-            keyExtractor={(item) => item.id.toString()}
-            style={styles.branchList}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.branchItem}
-                onPress={() => handleBranchSelect(item)}
-                activeOpacity={0.7}
-              >
-                <LinearGradient
-                  colors={['#F8FAFC', '#F1F5F9']}
-                  style={styles.branchItemGradient}
-                >
-                  <View style={styles.branchIcon}>
-                    <IconSymbol name="store" size={24} color={COLORS.primary.main} />
-                  </View>
-                  <View style={styles.branchInfo}>
-                    <ThemedText style={styles.branchName}>{item.name}</ThemedText>
-                    {item.city && (
-                      <ThemedText style={styles.branchCity}>{item.city}</ThemedText>
-                    )}
-                  </View>
-                  <IconSymbol name="chevron-right" size={24} color={COLORS.neutral[400]} />
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
+          <View style={styles.branchList}>
+            {branches.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <IconSymbol name="store-off" size={48} color={COLORS.neutral[300]} />
                 <ThemedText style={styles.emptyText}>Şube bulunamadı</ThemedText>
               </View>
-            }
-          />
+            ) : (
+              branches.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.branchItem}
+                  onPress={() => handleBranchSelect(item)}
+                  activeOpacity={0.7}
+                >
+                  <LinearGradient
+                    colors={['#F8FAFC', '#F1F5F9']}
+                    style={styles.branchItemGradient}
+                  >
+                    <View style={styles.branchIcon}>
+                      <IconSymbol name="store" size={24} color={COLORS.primary.main} />
+                    </View>
+                    <View style={styles.branchInfo}>
+                      <ThemedText style={styles.branchName}>{item.name}</ThemedText>
+                      {item.city && (
+                        <ThemedText style={styles.branchCity}>{item.city}</ThemedText>
+                      )}
+                    </View>
+                    <IconSymbol name="chevron-right" size={24} color={COLORS.neutral[400]} />
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
         </View>
       );
     }
