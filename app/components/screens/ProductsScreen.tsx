@@ -13,24 +13,43 @@ import React, { useState, useEffect } from 'react';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../../constants/Theme';
-import { API_ENDPOINTS, fetchWithTimeout } from '../../../constants/Api';
+import { API_ENDPOINTS, fetchWithTimeout, API_URL } from '../../../constants/Api';
 
 interface Product {
   id: number;
   name: string;
+  sku: string;
+  barcode: string;
   category: string;
   default_price: number;
   default_cost: number;
+  price_local: number;
+  price_usd: number;
+  currency: string;
+  width: number;
+  height: number;
+  sqm: number;
+  unit_type: string;
   sizes: string;
   description: string;
   in_stock: number;
+  stock_quantity: number;
+  min_stock_alert: number;
   created_at: string;
+}
+
+interface ExchangeRate {
+  id: number;
+  currency_from: string;
+  currency_to: string;
+  rate: number;
 }
 
 interface ProductsScreenProps {
   onSelectProduct?: (product: Product) => void;
   selectionMode?: boolean;
   onClose?: () => void;
+  currentUser?: any;
 }
 
 const CATEGORIES = [
@@ -44,40 +63,90 @@ const CATEGORIES = [
   'Diğer',
 ];
 
-export default function ProductsScreen({ onSelectProduct, selectionMode = false, onClose }: ProductsScreenProps) {
+const UNIT_TYPES = [
+  { id: 'piece', name: 'Adet', icon: 'cube-outline' },
+  { id: 'sqm', name: 'Metrekare (m²)', icon: 'square-outline' },
+];
+
+export default function ProductsScreen({
+  onSelectProduct,
+  selectionMode = false,
+  onClose,
+  currentUser
+}: ProductsScreenProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'dimensions'>('basic');
+  const [autoCalculateUSD, setAutoCalculateUSD] = useState(true);
+
   const [formData, setFormData] = useState({
     name: '',
+    sku: '',
+    barcode: '',
     category: '',
     default_price: '',
     default_cost: '',
+    price_local: '',
+    price_usd: '',
+    currency: 'TRY',
+    width: '',
+    height: '',
+    unit_type: 'piece',
     sizes: '',
     description: '',
     in_stock: true,
+    stock_quantity: '',
+    min_stock_alert: '5',
   });
 
   useEffect(() => {
     fetchProducts();
+    fetchExchangeRates();
   }, []);
 
   useEffect(() => {
     if (searchQuery.trim()) {
       const filtered = products.filter(p =>
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.category?.toLowerCase().includes(searchQuery.toLowerCase())
+        p.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.barcode?.includes(searchQuery) ||
+        p.sku?.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredProducts(filtered);
     } else {
       setFilteredProducts(products);
     }
   }, [searchQuery, products]);
+
+  // Auto-calculate USD price when TRY price changes
+  useEffect(() => {
+    if (autoCalculateUSD && formData.price_local) {
+      const usdRate = exchangeRates.find(r => r.currency_from === 'TRY' && r.currency_to === 'USD');
+      if (usdRate) {
+        const usdPrice = parseFloat(formData.price_local) * usdRate.rate;
+        setFormData(prev => ({ ...prev, price_usd: usdPrice.toFixed(2) }));
+      }
+    }
+  }, [formData.price_local, autoCalculateUSD, exchangeRates]);
+
+  // Auto-calculate SQM when dimensions change
+  useEffect(() => {
+    if (formData.width && formData.height) {
+      const sqm = (parseFloat(formData.width) * parseFloat(formData.height)) / 10000;
+      // Update default_price if unit_type is sqm
+      if (formData.unit_type === 'sqm' && formData.price_local) {
+        const totalPrice = sqm * parseFloat(formData.price_local);
+        setFormData(prev => ({ ...prev, default_price: totalPrice.toFixed(2) }));
+      }
+    }
+  }, [formData.width, formData.height, formData.unit_type, formData.price_local]);
 
   const fetchProducts = async () => {
     try {
@@ -93,22 +162,51 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
     }
   };
 
+  const fetchExchangeRates = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/exchange-rates`);
+      const data = await response.json();
+      setExchangeRates(data);
+    } catch (error) {
+      console.error('Kur oranlari alinamadi:', error);
+    }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchProducts();
+    fetchExchangeRates();
   };
 
   const resetForm = () => {
     setFormData({
       name: '',
+      sku: '',
+      barcode: '',
       category: '',
       default_price: '',
       default_cost: '',
+      price_local: '',
+      price_usd: '',
+      currency: 'TRY',
+      width: '',
+      height: '',
+      unit_type: 'piece',
       sizes: '',
       description: '',
       in_stock: true,
+      stock_quantity: '',
+      min_stock_alert: '5',
     });
     setEditingProduct(null);
+    setActiveTab('basic');
+  };
+
+  const calculateSqm = () => {
+    if (formData.width && formData.height) {
+      return ((parseFloat(formData.width) * parseFloat(formData.height)) / 10000).toFixed(2);
+    }
+    return '0';
   };
 
   const handleSave = async () => {
@@ -122,14 +220,36 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
         ? `${API_ENDPOINTS.products}/${editingProduct.id}`
         : API_ENDPOINTS.products;
 
+      const sqm = formData.width && formData.height
+        ? (parseFloat(formData.width) * parseFloat(formData.height)) / 10000
+        : null;
+
+      const payload = {
+        name: formData.name,
+        sku: formData.sku,
+        barcode: formData.barcode,
+        category: formData.category,
+        default_price: parseFloat(formData.default_price) || parseFloat(formData.price_local) || 0,
+        default_cost: parseFloat(formData.default_cost) || 0,
+        price_local: parseFloat(formData.price_local) || parseFloat(formData.default_price) || 0,
+        price_usd: parseFloat(formData.price_usd) || 0,
+        currency: formData.currency,
+        width: parseFloat(formData.width) || null,
+        height: parseFloat(formData.height) || null,
+        unit_type: formData.unit_type,
+        sizes: formData.sizes,
+        description: formData.description,
+        in_stock: formData.in_stock,
+        stock_quantity: parseInt(formData.stock_quantity) || 0,
+        min_stock_alert: parseInt(formData.min_stock_alert) || 5,
+        created_by: currentUser?.userId,
+        updated_by: currentUser?.userId,
+      };
+
       const response = await fetchWithTimeout(url, {
         method: editingProduct ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          default_price: parseFloat(formData.default_price) || 0,
-          default_cost: parseFloat(formData.default_cost) || 0,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -158,6 +278,8 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
             try {
               const response = await fetchWithTimeout(`${API_ENDPOINTS.products}/${product.id}`, {
                 method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deleted_by: currentUser?.userId }),
               });
               if (response.ok) {
                 Alert.alert('Basarili', 'Urun silindi');
@@ -176,98 +298,148 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
     setEditingProduct(product);
     setFormData({
       name: product.name,
+      sku: product.sku || '',
+      barcode: product.barcode || '',
       category: product.category || '',
       default_price: product.default_price?.toString() || '',
       default_cost: product.default_cost?.toString() || '',
+      price_local: product.price_local?.toString() || product.default_price?.toString() || '',
+      price_usd: product.price_usd?.toString() || '',
+      currency: product.currency || 'TRY',
+      width: product.width?.toString() || '',
+      height: product.height?.toString() || '',
+      unit_type: product.unit_type || 'piece',
       sizes: product.sizes || '',
       description: product.description || '',
       in_stock: product.in_stock === 1,
+      stock_quantity: product.stock_quantity?.toString() || '0',
+      min_stock_alert: product.min_stock_alert?.toString() || '5',
     });
     setShowAddModal(true);
   };
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('tr-TR', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-    }).format(price);
+  const formatPrice = (price: number, currency: string = 'USD') => {
+    const symbols: { [key: string]: string } = { TRY: '₺', USD: '$', EUR: '€' };
+    return `${symbols[currency] || currency} ${price.toLocaleString('tr-TR', { minimumFractionDigits: 0 })}`;
   };
 
-  const renderProductCard = (product: Product) => (
-    <TouchableOpacity
-      key={product.id}
-      style={styles.productCard}
-      onPress={() => {
-        if (selectionMode && onSelectProduct) {
-          onSelectProduct(product);
-        } else {
-          handleEdit(product);
-        }
-      }}
-      activeOpacity={0.7}
-    >
-      <View style={styles.productHeader}>
-        <View style={[styles.productIcon, !product.in_stock && styles.outOfStock]}>
-          <IconSymbol
-            name="rug"
-            size={24}
-            color={product.in_stock ? COLORS.primary.accent : COLORS.neutral[400]}
-          />
-        </View>
-        <View style={styles.productInfo}>
-          <View style={styles.productNameRow}>
-            <ThemedText style={styles.productName}>{product.name}</ThemedText>
-            {!product.in_stock && (
-              <View style={styles.outOfStockBadge}>
-                <ThemedText style={styles.outOfStockText}>Stokta Yok</ThemedText>
-              </View>
-            )}
+  const renderProductCard = (product: Product) => {
+    const isLowStock = product.stock_quantity <= product.min_stock_alert;
+
+    return (
+      <TouchableOpacity
+        key={product.id}
+        style={styles.productCard}
+        onPress={() => {
+          if (selectionMode && onSelectProduct) {
+            onSelectProduct(product);
+          } else {
+            handleEdit(product);
+          }
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={styles.productHeader}>
+          <View style={[styles.productIcon, !product.in_stock && styles.outOfStock]}>
+            <IconSymbol
+              name="rug"
+              size={24}
+              color={product.in_stock ? COLORS.primary.accent : COLORS.neutral[400]}
+            />
           </View>
-          {product.category && (
-            <ThemedText style={styles.productCategory}>{product.category}</ThemedText>
+          <View style={styles.productInfo}>
+            <View style={styles.productNameRow}>
+              <ThemedText style={styles.productName}>{product.name}</ThemedText>
+              {!product.in_stock && (
+                <View style={styles.outOfStockBadge}>
+                  <ThemedText style={styles.outOfStockText}>Stokta Yok</ThemedText>
+                </View>
+              )}
+              {isLowStock && product.in_stock === 1 && (
+                <View style={styles.lowStockBadge}>
+                  <ThemedText style={styles.lowStockText}>Stok Az</ThemedText>
+                </View>
+              )}
+            </View>
+            <View style={styles.productMeta}>
+              {product.category && (
+                <ThemedText style={styles.productCategory}>{product.category}</ThemedText>
+              )}
+              {product.sku && (
+                <ThemedText style={styles.productSku}>SKU: {product.sku}</ThemedText>
+              )}
+            </View>
+          </View>
+          {!selectionMode && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDelete(product)}
+            >
+              <IconSymbol name="trash-can-outline" size={20} color={COLORS.error.main} />
+            </TouchableOpacity>
           )}
         </View>
-        {!selectionMode && (
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDelete(product)}
-          >
-            <IconSymbol name="trash-can-outline" size={20} color={COLORS.error.main} />
-          </TouchableOpacity>
-        )}
-      </View>
 
-      <View style={styles.productDetails}>
-        <View style={styles.priceRow}>
-          <View style={styles.priceItem}>
-            <ThemedText style={styles.priceLabel}>Fiyat</ThemedText>
-            <ThemedText style={styles.priceValue}>{formatPrice(product.default_price || 0)}</ThemedText>
+        <View style={styles.productDetails}>
+          {/* Pricing Row */}
+          <View style={styles.priceRow}>
+            <View style={styles.priceItem}>
+              <ThemedText style={styles.priceLabel}>Fiyat (₺)</ThemedText>
+              <ThemedText style={styles.priceValue}>
+                {formatPrice(product.price_local || product.default_price || 0, 'TRY')}
+              </ThemedText>
+            </View>
+            <View style={styles.priceDivider} />
+            <View style={styles.priceItem}>
+              <ThemedText style={styles.priceLabel}>Fiyat ($)</ThemedText>
+              <ThemedText style={[styles.priceValue, { color: COLORS.info.main }]}>
+                {formatPrice(product.price_usd || 0, 'USD')}
+              </ThemedText>
+            </View>
+            <View style={styles.priceDivider} />
+            <View style={styles.priceItem}>
+              <ThemedText style={styles.priceLabel}>Stok</ThemedText>
+              <ThemedText style={[styles.priceValue, isLowStock ? { color: COLORS.warning.main } : {}]}>
+                {product.stock_quantity || 0}
+              </ThemedText>
+            </View>
           </View>
-          <View style={styles.priceDivider} />
-          <View style={styles.priceItem}>
-            <ThemedText style={styles.priceLabel}>Maliyet</ThemedText>
-            <ThemedText style={[styles.priceValue, { color: COLORS.error.main }]}>
-              {formatPrice(product.default_cost || 0)}
-            </ThemedText>
-          </View>
-          <View style={styles.priceDivider} />
-          <View style={styles.priceItem}>
-            <ThemedText style={styles.priceLabel}>Kar</ThemedText>
-            <ThemedText style={[styles.priceValue, { color: COLORS.success.main }]}>
-              {formatPrice((product.default_price || 0) - (product.default_cost || 0))}
-            </ThemedText>
-          </View>
+
+          {/* Dimensions Row */}
+          {(product.width || product.height || product.sqm) && (
+            <View style={styles.dimensionsRow}>
+              <View style={styles.dimensionItem}>
+                <IconSymbol name="ruler" size={14} color={COLORS.light.text.tertiary} />
+                <ThemedText style={styles.dimensionText}>
+                  {product.width} x {product.height} cm
+                </ThemedText>
+              </View>
+              {product.sqm && (
+                <View style={styles.dimensionItem}>
+                  <IconSymbol name="square-outline" size={14} color={COLORS.light.text.tertiary} />
+                  <ThemedText style={styles.dimensionText}>
+                    {product.sqm.toFixed(2)} m²
+                  </ThemedText>
+                </View>
+              )}
+              <View style={styles.unitBadge}>
+                <ThemedText style={styles.unitText}>
+                  {product.unit_type === 'sqm' ? 'm² bazlı' : 'Adet bazlı'}
+                </ThemedText>
+              </View>
+            </View>
+          )}
+
+          {product.barcode && (
+            <View style={styles.barcodeRow}>
+              <IconSymbol name="barcode" size={14} color={COLORS.light.text.tertiary} />
+              <ThemedText style={styles.barcodeText}>{product.barcode}</ThemedText>
+            </View>
+          )}
         </View>
-        {product.sizes && (
-          <View style={styles.sizesRow}>
-            <IconSymbol name="ruler" size={14} color={COLORS.light.text.tertiary} />
-            <ThemedText style={styles.sizesText}>{product.sizes}</ThemedText>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const renderCategoryPicker = () => (
     <Modal
@@ -338,94 +510,303 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
           </TouchableOpacity>
         </View>
 
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'basic' && styles.activeTab]}
+            onPress={() => setActiveTab('basic')}
+          >
+            <IconSymbol name="information" size={18} color={activeTab === 'basic' ? COLORS.primary.main : COLORS.light.text.tertiary} />
+            <ThemedText style={[styles.tabText, activeTab === 'basic' && styles.activeTabText]}>Temel</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'pricing' && styles.activeTab]}
+            onPress={() => setActiveTab('pricing')}
+          >
+            <IconSymbol name="cash" size={18} color={activeTab === 'pricing' ? COLORS.primary.main : COLORS.light.text.tertiary} />
+            <ThemedText style={[styles.tabText, activeTab === 'pricing' && styles.activeTabText]}>Fiyat</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'dimensions' && styles.activeTab]}
+            onPress={() => setActiveTab('dimensions')}
+          >
+            <IconSymbol name="ruler" size={18} color={activeTab === 'dimensions' ? COLORS.primary.main : COLORS.light.text.tertiary} />
+            <ThemedText style={[styles.tabText, activeTab === 'dimensions' && styles.activeTabText]}>Boyut</ThemedText>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.inputGroup}>
-            <ThemedText style={styles.inputLabel}>Urun Adi *</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={formData.name}
-              onChangeText={(text) => setFormData({ ...formData, name: text })}
-              placeholder="Urun adi"
-              placeholderTextColor={COLORS.neutral[400]}
-            />
-          </View>
+          {activeTab === 'basic' && (
+            <>
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Urun Adi *</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                  placeholder="Urun adi"
+                  placeholderTextColor={COLORS.neutral[400]}
+                />
+              </View>
 
-          <View style={styles.inputGroup}>
-            <ThemedText style={styles.inputLabel}>Kategori</ThemedText>
-            <TouchableOpacity
-              style={styles.selectInput}
-              onPress={() => setShowCategoryPicker(true)}
-            >
-              <ThemedText style={formData.category ? styles.selectText : styles.selectPlaceholder}>
-                {formData.category || 'Kategori sec'}
-              </ThemedText>
-              <IconSymbol name="chevron-down" size={20} color={COLORS.light.text.tertiary} />
-            </TouchableOpacity>
-          </View>
+              <View style={styles.rowInputs}>
+                <View style={[styles.inputGroup, { flex: 1, marginRight: SPACING.sm }]}>
+                  <ThemedText style={styles.inputLabel}>SKU</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.sku}
+                    onChangeText={(text) => setFormData({ ...formData, sku: text.toUpperCase() })}
+                    placeholder="ED-001"
+                    placeholderTextColor={COLORS.neutral[400]}
+                    autoCapitalize="characters"
+                  />
+                </View>
+                <View style={[styles.inputGroup, { flex: 1, marginLeft: SPACING.sm }]}>
+                  <ThemedText style={styles.inputLabel}>Barkod</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.barcode}
+                    onChangeText={(text) => setFormData({ ...formData, barcode: text })}
+                    placeholder="8690001000001"
+                    placeholderTextColor={COLORS.neutral[400]}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
 
-          <View style={styles.rowInputs}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: SPACING.sm }]}>
-              <ThemedText style={styles.inputLabel}>Fiyat (USD)</ThemedText>
-              <TextInput
-                style={styles.input}
-                value={formData.default_price}
-                onChangeText={(text) => setFormData({ ...formData, default_price: text })}
-                placeholder="0"
-                placeholderTextColor={COLORS.neutral[400]}
-                keyboardType="decimal-pad"
-              />
-            </View>
-            <View style={[styles.inputGroup, { flex: 1, marginLeft: SPACING.sm }]}>
-              <ThemedText style={styles.inputLabel}>Maliyet (USD)</ThemedText>
-              <TextInput
-                style={styles.input}
-                value={formData.default_cost}
-                onChangeText={(text) => setFormData({ ...formData, default_cost: text })}
-                placeholder="0"
-                placeholderTextColor={COLORS.neutral[400]}
-                keyboardType="decimal-pad"
-              />
-            </View>
-          </View>
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Kategori</ThemedText>
+                <TouchableOpacity
+                  style={styles.selectInput}
+                  onPress={() => setShowCategoryPicker(true)}
+                >
+                  <ThemedText style={formData.category ? styles.selectText : styles.selectPlaceholder}>
+                    {formData.category || 'Kategori sec'}
+                  </ThemedText>
+                  <IconSymbol name="chevron-down" size={20} color={COLORS.light.text.tertiary} />
+                </TouchableOpacity>
+              </View>
 
-          <View style={styles.inputGroup}>
-            <ThemedText style={styles.inputLabel}>Boyutlar</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={formData.sizes}
-              onChangeText={(text) => setFormData({ ...formData, sizes: text })}
-              placeholder="Orn: 100x150, 150x200, 200x300"
-              placeholderTextColor={COLORS.neutral[400]}
-            />
-          </View>
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Aciklama</ThemedText>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={formData.description}
+                  onChangeText={(text) => setFormData({ ...formData, description: text })}
+                  placeholder="Urun aciklamasi..."
+                  placeholderTextColor={COLORS.neutral[400]}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
 
-          <View style={styles.inputGroup}>
-            <ThemedText style={styles.inputLabel}>Aciklama</ThemedText>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={formData.description}
-              onChangeText={(text) => setFormData({ ...formData, description: text })}
-              placeholder="Urun aciklamasi..."
-              placeholderTextColor={COLORS.neutral[400]}
-              multiline
-              numberOfLines={3}
-            />
-          </View>
+              <View style={styles.switchRow}>
+                <View>
+                  <ThemedText style={styles.switchLabel}>Stokta Mevcut</ThemedText>
+                  <ThemedText style={styles.switchDescription}>
+                    Urun satis icin uygun mu?
+                  </ThemedText>
+                </View>
+                <Switch
+                  value={formData.in_stock}
+                  onValueChange={(value) => setFormData({ ...formData, in_stock: value })}
+                  trackColor={{ false: COLORS.light.border, true: `${COLORS.success.main}50` }}
+                  thumbColor={formData.in_stock ? COLORS.success.main : COLORS.neutral[200]}
+                />
+              </View>
 
-          <View style={styles.switchRow}>
-            <View>
-              <ThemedText style={styles.switchLabel}>Stokta Mevcut</ThemedText>
-              <ThemedText style={styles.switchDescription}>
-                Urun satis icin uygun mu?
-              </ThemedText>
-            </View>
-            <Switch
-              value={formData.in_stock}
-              onValueChange={(value) => setFormData({ ...formData, in_stock: value })}
-              trackColor={{ false: COLORS.light.border, true: `${COLORS.success.main}50` }}
-              thumbColor={formData.in_stock ? COLORS.success.main : COLORS.neutral[200]}
-            />
-          </View>
+              <View style={styles.rowInputs}>
+                <View style={[styles.inputGroup, { flex: 1, marginRight: SPACING.sm }]}>
+                  <ThemedText style={styles.inputLabel}>Stok Adedi</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.stock_quantity}
+                    onChangeText={(text) => setFormData({ ...formData, stock_quantity: text })}
+                    placeholder="0"
+                    placeholderTextColor={COLORS.neutral[400]}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={[styles.inputGroup, { flex: 1, marginLeft: SPACING.sm }]}>
+                  <ThemedText style={styles.inputLabel}>Min. Stok Uyarisi</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.min_stock_alert}
+                    onChangeText={(text) => setFormData({ ...formData, min_stock_alert: text })}
+                    placeholder="5"
+                    placeholderTextColor={COLORS.neutral[400]}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+            </>
+          )}
+
+          {activeTab === 'pricing' && (
+            <>
+              <View style={styles.infoBox}>
+                <IconSymbol name="information" size={20} color={COLORS.info.main} />
+                <ThemedText style={styles.infoText}>
+                  TL fiyati girildiginde USD fiyati otomatik hesaplanir
+                </ThemedText>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Satis Fiyati (₺ TRY)</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={formData.price_local}
+                  onChangeText={(text) => setFormData({ ...formData, price_local: text })}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.neutral[400]}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <ThemedText style={styles.inputLabel}>Satis Fiyati ($ USD)</ThemedText>
+                  <TouchableOpacity
+                    style={styles.autoToggle}
+                    onPress={() => setAutoCalculateUSD(!autoCalculateUSD)}
+                  >
+                    <IconSymbol
+                      name={autoCalculateUSD ? 'link' : 'link-off'}
+                      size={16}
+                      color={autoCalculateUSD ? COLORS.success.main : COLORS.neutral[400]}
+                    />
+                    <ThemedText style={[styles.autoToggleText, autoCalculateUSD && styles.autoToggleActive]}>
+                      {autoCalculateUSD ? 'Otomatik' : 'Manuel'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={[styles.input, autoCalculateUSD && styles.inputDisabled]}
+                  value={formData.price_usd}
+                  onChangeText={(text) => setFormData({ ...formData, price_usd: text })}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.neutral[400]}
+                  keyboardType="decimal-pad"
+                  editable={!autoCalculateUSD}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Maliyet (₺ TRY)</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={formData.default_cost}
+                  onChangeText={(text) => setFormData({ ...formData, default_cost: text })}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.neutral[400]}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              {/* Profit Calculation */}
+              {formData.price_local && formData.default_cost && (
+                <View style={styles.profitBox}>
+                  <ThemedText style={styles.profitLabel}>Kar Hesabi</ThemedText>
+                  <View style={styles.profitRow}>
+                    <View style={styles.profitItem}>
+                      <ThemedText style={styles.profitItemLabel}>Kar (₺)</ThemedText>
+                      <ThemedText style={[styles.profitItemValue, { color: COLORS.success.main }]}>
+                        ₺ {(parseFloat(formData.price_local) - parseFloat(formData.default_cost)).toLocaleString('tr-TR')}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.profitItem}>
+                      <ThemedText style={styles.profitItemLabel}>Kar Orani</ThemedText>
+                      <ThemedText style={[styles.profitItemValue, { color: COLORS.success.main }]}>
+                        %{(((parseFloat(formData.price_local) - parseFloat(formData.default_cost)) / parseFloat(formData.price_local)) * 100).toFixed(1)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+
+          {activeTab === 'dimensions' && (
+            <>
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Hesaplama Birimi</ThemedText>
+                <View style={styles.unitSelector}>
+                  {UNIT_TYPES.map(unit => (
+                    <TouchableOpacity
+                      key={unit.id}
+                      style={[
+                        styles.unitOption,
+                        formData.unit_type === unit.id && styles.unitOptionSelected,
+                      ]}
+                      onPress={() => setFormData({ ...formData, unit_type: unit.id })}
+                    >
+                      <IconSymbol
+                        name={unit.icon}
+                        size={20}
+                        color={formData.unit_type === unit.id ? COLORS.primary.main : COLORS.light.text.tertiary}
+                      />
+                      <ThemedText style={[
+                        styles.unitOptionText,
+                        formData.unit_type === unit.id && styles.unitOptionTextSelected,
+                      ]}>
+                        {unit.name}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.rowInputs}>
+                <View style={[styles.inputGroup, { flex: 1, marginRight: SPACING.sm }]}>
+                  <ThemedText style={styles.inputLabel}>En (cm)</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.width}
+                    onChangeText={(text) => setFormData({ ...formData, width: text })}
+                    placeholder="200"
+                    placeholderTextColor={COLORS.neutral[400]}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={[styles.inputGroup, { flex: 1, marginLeft: SPACING.sm }]}>
+                  <ThemedText style={styles.inputLabel}>Boy (cm)</ThemedText>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.height}
+                    onChangeText={(text) => setFormData({ ...formData, height: text })}
+                    placeholder="300"
+                    placeholderTextColor={COLORS.neutral[400]}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+
+              {/* SQM Calculation */}
+              {formData.width && formData.height && (
+                <View style={styles.sqmBox}>
+                  <IconSymbol name="square-outline" size={24} color={COLORS.primary.main} />
+                  <View style={styles.sqmInfo}>
+                    <ThemedText style={styles.sqmLabel}>Hesaplanan Metrekare</ThemedText>
+                    <ThemedText style={styles.sqmValue}>{calculateSqm()} m²</ThemedText>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.inputGroup}>
+                <ThemedText style={styles.inputLabel}>Mevcut Boyutlar</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={formData.sizes}
+                  onChangeText={(text) => setFormData({ ...formData, sizes: text })}
+                  placeholder="Orn: 100x150, 150x200, 200x300"
+                  placeholderTextColor={COLORS.neutral[400]}
+                />
+                <ThemedText style={styles.inputHint}>
+                  Virgülle ayirarak birden fazla boyut girebilirsiniz
+                </ThemedText>
+              </View>
+            </>
+          )}
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -463,7 +844,7 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
           <IconSymbol name="magnify" size={20} color={COLORS.light.text.tertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Urun ara..."
+            placeholder="Urun, barkod, SKU ara..."
             placeholderTextColor={COLORS.neutral[400]}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -475,6 +856,28 @@ export default function ProductsScreen({ onSelectProduct, selectionMode = false,
           )}
         </View>
       </View>
+
+      {/* Stats */}
+      {!selectionMode && (
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <ThemedText style={styles.statNumber}>{products.length}</ThemedText>
+            <ThemedText style={styles.statLabel}>Toplam Urun</ThemedText>
+          </View>
+          <View style={styles.statCard}>
+            <ThemedText style={styles.statNumber}>
+              {products.filter(p => p.in_stock === 1).length}
+            </ThemedText>
+            <ThemedText style={styles.statLabel}>Stokta</ThemedText>
+          </View>
+          <View style={styles.statCard}>
+            <ThemedText style={[styles.statNumber, { color: COLORS.warning.main }]}>
+              {products.filter(p => p.stock_quantity <= p.min_stock_alert && p.in_stock === 1).length}
+            </ThemedText>
+            <ThemedText style={styles.statLabel}>Stok Az</ThemedText>
+          </View>
+        </View>
+      )}
 
       {/* Product List */}
       <ScrollView
@@ -565,6 +968,31 @@ const styles = StyleSheet.create({
     color: COLORS.light.text.primary,
     paddingVertical: SPACING.xs,
   },
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  statNumber: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary.main,
+  },
+  statLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginTop: 2,
+  },
   listContainer: {
     flex: 1,
   },
@@ -603,6 +1031,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    flexWrap: 'wrap',
   },
   productName: {
     fontSize: TYPOGRAPHY.fontSize.lg,
@@ -620,10 +1049,30 @@ const styles = StyleSheet.create({
     color: COLORS.error.main,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
+  lowStockBadge: {
+    backgroundColor: COLORS.warning.muted,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+  },
+  lowStockText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.warning.main,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  productMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: SPACING.md,
+  },
   productCategory: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
-    marginTop: 2,
+  },
+  productSku: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
   },
   deleteButton: {
     padding: SPACING.sm,
@@ -657,14 +1106,41 @@ const styles = StyleSheet.create({
     height: 32,
     backgroundColor: COLORS.light.border,
   },
-  sizesRow: {
+  dimensionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    flexWrap: 'wrap',
+  },
+  dimensionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  sizesText: {
+  dimensionText: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
+  },
+  unitBadge: {
+    backgroundColor: COLORS.primary.muted,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+  },
+  unitText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.primary.main,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  barcodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  barcodeText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+    fontFamily: 'monospace',
   },
   emptyState: {
     alignItems: 'center',
@@ -717,6 +1193,31 @@ const styles = StyleSheet.create({
     fontWeight: TYPOGRAPHY.fontWeight.semiBold,
     color: COLORS.primary.accent,
   },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light.border,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.xs,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.primary.main,
+  },
+  tabText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  activeTabText: {
+    color: COLORS.primary.main,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+  },
   modalContent: {
     flex: 1,
     padding: SPACING.base,
@@ -724,11 +1225,22 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: SPACING.lg,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
   inputLabel: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
     color: COLORS.light.text.secondary,
     marginBottom: SPACING.sm,
+  },
+  inputHint: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+    marginTop: SPACING.xs,
   },
   input: {
     backgroundColor: COLORS.light.surfaceSecondary,
@@ -739,6 +1251,10 @@ const styles = StyleSheet.create({
     color: COLORS.light.text.primary,
     borderWidth: 1,
     borderColor: COLORS.light.border,
+  },
+  inputDisabled: {
+    backgroundColor: COLORS.neutral[100],
+    color: COLORS.neutral[500],
   },
   selectInput: {
     flexDirection: 'row',
@@ -784,6 +1300,109 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.light.text.tertiary,
     marginTop: 2,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.info.muted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.info.main,
+  },
+  autoToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  autoToggleText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.neutral[400],
+  },
+  autoToggleActive: {
+    color: COLORS.success.main,
+  },
+  profitBox: {
+    backgroundColor: COLORS.success.muted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  profitLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.success.main,
+    marginBottom: SPACING.sm,
+  },
+  profitRow: {
+    flexDirection: 'row',
+    gap: SPACING.lg,
+  },
+  profitItem: {
+    flex: 1,
+  },
+  profitItemLabel: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.light.text.tertiary,
+  },
+  profitItemValue: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    marginTop: 2,
+  },
+  unitSelector: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  unitOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.light.surfaceSecondary,
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  unitOptionSelected: {
+    backgroundColor: COLORS.primary.muted,
+    borderColor: COLORS.primary.main,
+  },
+  unitOptionText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  unitOptionTextSelected: {
+    color: COLORS.primary.main,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+  },
+  sqmBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary.muted,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
+  },
+  sqmInfo: {
+    flex: 1,
+  },
+  sqmLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.tertiary,
+  },
+  sqmValue: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary.main,
   },
 
   // Picker Styles

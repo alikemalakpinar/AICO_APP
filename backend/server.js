@@ -3,18 +3,22 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const sqlite3 = require('better-sqlite3');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // SQLite veritabani baglantisi
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = sqlite3(dbPath);
 
-// Tablolari olustur
+// ==================== DATABASE TABLES ====================
+
+// Users tablosu
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,99 +27,347 @@ db.exec(`
     telefon TEXT,
     sifre TEXT NOT NULL,
     yetki TEXT DEFAULT 'Operasyon Sorumlusu',
-    ek_yetkiler TEXT
+    ek_yetkiler TEXT,
+    branch_id INTEGER,
+    avatar TEXT,
+    last_login TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
+// Subeler (Branches) tablosu
 db.exec(`
-  CREATE TABLE IF NOT EXISTS siparisler (
+  CREATE TABLE IF NOT EXISTS subeler (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT DEFAULT CURRENT_TIMESTAMP,
-    order_no TEXT,
-    location TEXT,
-    customer_name TEXT,
-    customer_address TEXT,
-    customer_country TEXT,
-    customer_city TEXT,
-    customer_phone TEXT,
-    customer_email TEXT,
-    salesman TEXT,
-    conference TEXT,
-    agency TEXT,
-    guide TEXT,
-    products TEXT,
-    process TEXT DEFAULT 'Sipariş Oluşturuldu',
-    photos TEXT,
-    cargo_company TEXT,
-    cargo_tracking TEXT
+    name TEXT NOT NULL,
+    code TEXT UNIQUE NOT NULL,
+    address TEXT,
+    city TEXT,
+    state TEXT,
+    country TEXT DEFAULT 'Türkiye',
+    phone TEXT,
+    email TEXT,
+    manager_id INTEGER,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
-// Musteriler tablosu
+// Musteriler tablosu (enhanced)
 db.exec(`
   CREATE TABLE IF NOT EXISTS musteriler (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     email TEXT,
     phone TEXT,
+    phone_country_code TEXT DEFAULT '+90',
+    phone_formatted TEXT,
     country TEXT,
+    country_code TEXT,
     city TEXT,
+    state TEXT,
     address TEXT,
+    postal_code TEXT,
+    shipping_address TEXT,
+    shipping_city TEXT,
+    shipping_state TEXT,
+    shipping_country TEXT,
+    shipping_postal_code TEXT,
+    tax_number TEXT,
+    passport_number TEXT,
+    id_number TEXT,
     notes TEXT,
+    documents TEXT,
     total_orders INTEGER DEFAULT 0,
     total_spent REAL DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    latitude REAL,
+    longitude REAL,
+    customer_type TEXT DEFAULT 'individual',
+    created_by INTEGER,
+    updated_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
-// Urunler tablosu
+// Urunler tablosu (enhanced)
 db.exec(`
   CREATE TABLE IF NOT EXISTS urunler (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    sku TEXT,
+    barcode TEXT,
     category TEXT,
     default_price REAL,
     default_cost REAL,
+    price_local REAL,
+    price_usd REAL,
+    currency TEXT DEFAULT 'TRY',
+    width REAL,
+    height REAL,
+    sqm REAL,
+    unit_type TEXT DEFAULT 'piece',
     sizes TEXT,
     description TEXT,
     in_stock INTEGER DEFAULT 1,
+    stock_quantity INTEGER DEFAULT 0,
+    min_stock_alert INTEGER DEFAULT 5,
+    branch_id INTEGER,
+    images TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Sube Stok tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sube_stok (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    branch_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    quantity INTEGER DEFAULT 0,
+    min_stock INTEGER DEFAULT 5,
+    location TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES subeler(id),
+    FOREIGN KEY (product_id) REFERENCES urunler(id)
+  )
+`);
+
+// Siparisler tablosu (enhanced)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS siparisler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT DEFAULT CURRENT_TIMESTAMP,
+    order_no TEXT UNIQUE,
+    order_type TEXT DEFAULT 'sale',
+    branch_id INTEGER,
+    location TEXT,
+    customer_id INTEGER,
+    customer_name TEXT,
+    customer_address TEXT,
+    customer_country TEXT,
+    customer_city TEXT,
+    customer_state TEXT,
+    customer_phone TEXT,
+    customer_email TEXT,
+    shipping_address TEXT,
+    shipping_city TEXT,
+    shipping_state TEXT,
+    shipping_country TEXT,
+    shipping_postal_code TEXT,
+    salesman TEXT,
+    salesman_id INTEGER,
+    conference TEXT,
+    agency TEXT,
+    guide TEXT,
+    products TEXT,
+    subtotal REAL DEFAULT 0,
+    discount REAL DEFAULT 0,
+    discount_type TEXT DEFAULT 'amount',
+    tax REAL DEFAULT 0,
+    total REAL DEFAULT 0,
+    currency TEXT DEFAULT 'TRY',
+    exchange_rate REAL DEFAULT 1,
+    process TEXT DEFAULT 'Sipariş Oluşturuldu',
+    payment_status TEXT DEFAULT 'pending',
+    photos TEXT,
+    cargo_company TEXT,
+    cargo_tracking TEXT,
+    bus_number TEXT,
+    transport_number TEXT,
+    estimated_delivery TEXT,
+    actual_delivery TEXT,
+    notes TEXT,
+    internal_notes TEXT,
+    created_by INTEGER,
+    updated_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Odemeler (Payments) tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS odemeler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    customer_id INTEGER,
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'TRY',
+    payment_method TEXT NOT NULL,
+    card_type TEXT,
+    card_last_four TEXT,
+    installments INTEGER DEFAULT 1,
+    transaction_id TEXT,
+    status TEXT DEFAULT 'pending',
+    payment_date TEXT DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    created_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES siparisler(id),
+    FOREIGN KEY (customer_id) REFERENCES musteriler(id)
+  )
+`);
+
+// Kur (Exchange Rates) tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS kur_oranlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    currency_from TEXT NOT NULL,
+    currency_to TEXT NOT NULL,
+    rate REAL NOT NULL,
+    auto_update INTEGER DEFAULT 1,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Islem Kayitlari (Activity Logs) tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS islem_kayitlari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    user_name TEXT,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id INTEGER,
+    entity_name TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    details TEXT,
+    ip_address TEXT,
+    branch_id INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
-// Demo verileri ekle (eger bos ise)
+// Musteri Belgeleri tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS musteri_belgeleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    document_name TEXT,
+    document_data TEXT,
+    file_path TEXT,
+    mime_type TEXT,
+    uploaded_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES musteriler(id)
+  )
+`);
+
+// Bildirimler tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bildirimler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    title TEXT NOT NULL,
+    message TEXT,
+    type TEXT DEFAULT 'info',
+    entity_type TEXT,
+    entity_id INTEGER,
+    is_read INTEGER DEFAULT 0,
+    email_sent INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Sevkiyat Gecmisi tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sevkiyat_gecmisi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    location TEXT,
+    notes TEXT,
+    updated_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES siparisler(id)
+  )
+`);
+
+// ==================== DEMO DATA ====================
+
+// Demo subeler
+const branchCount = db.prepare('SELECT COUNT(*) as count FROM subeler').get();
+if (branchCount.count === 0) {
+  const branches = [
+    { name: 'İstanbul Merkez', code: 'IST-001', city: 'İstanbul', state: 'Marmara', address: 'Kapalıçarşı No:45' },
+    { name: 'Ankara Şube', code: 'ANK-001', city: 'Ankara', state: 'İç Anadolu', address: 'Kızılay Merkez' },
+    { name: 'İzmir Şube', code: 'IZM-001', city: 'İzmir', state: 'Ege', address: 'Konak Meydanı' },
+    { name: 'Antalya Şube', code: 'ANT-001', city: 'Antalya', state: 'Akdeniz', address: 'Kaleiçi' },
+    { name: 'Bursa Şube', code: 'BRS-001', city: 'Bursa', state: 'Marmara', address: 'Osmangazi' }
+  ];
+
+  const insertBranch = db.prepare(`
+    INSERT INTO subeler (name, code, city, state, address)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  branches.forEach(b => insertBranch.run(b.name, b.code, b.city, b.state, b.address));
+  console.log('Demo subeler olusturuldu');
+}
+
+// Demo kullanicilar
 const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
 if (userCount.count === 0) {
   const hashedPassword = bcrypt.hashSync('123456', 10);
 
-  // Demo kullanicilar
   db.prepare(`
-    INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki, ek_yetkiler)
+    INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki, ek_yetkiler, branch_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run('Admin User', 'admin@test.com', '555-0001', hashedPassword, 'Patron', 'finansal_goruntuleme,rapor_goruntuleme,belge_olusturma', 1);
+
+  db.prepare(`
+    INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki, branch_id)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run('Admin User', 'admin@test.com', '555-0001', hashedPassword, 'Patron', 'finansal_goruntuleme,rapor_goruntuleme,belge_olusturma');
+  `).run('Test User', 'test@test.com', '555-0002', hashedPassword, 'Operasyon Sorumlusu', 1);
 
   db.prepare(`
-    INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki)
-    VALUES (?, ?, ?, ?, ?)
-  `).run('Test User', 'test@test.com', '555-0002', hashedPassword, 'Operasyon Sorumlusu');
+    INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki, branch_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run('Depo Sorumlusu', 'depo@test.com', '555-0003', hashedPassword, 'Depo Görevlisi', 2);
 
-  console.log('Demo kullanicilar olusturuldu:');
-  console.log('  - admin@test.com / 123456 (Patron)');
-  console.log('  - test@test.com / 123456 (Operasyon Sorumlusu)');
+  console.log('Demo kullanicilar olusturuldu');
 }
 
-// Demo siparisler ekle (eger bos ise)
+// Demo kur oranlari
+const exchangeCount = db.prepare('SELECT COUNT(*) as count FROM kur_oranlari').get();
+if (exchangeCount.count === 0) {
+  const rates = [
+    { from: 'USD', to: 'TRY', rate: 34.50 },
+    { from: 'EUR', to: 'TRY', rate: 36.20 },
+    { from: 'GBP', to: 'TRY', rate: 43.50 },
+    { from: 'TRY', to: 'USD', rate: 0.029 },
+    { from: 'TRY', to: 'EUR', rate: 0.028 }
+  ];
+
+  const insertRate = db.prepare(`
+    INSERT INTO kur_oranlari (currency_from, currency_to, rate)
+    VALUES (?, ?, ?)
+  `);
+
+  rates.forEach(r => insertRate.run(r.from, r.to, r.rate));
+  console.log('Demo kur oranlari olusturuldu');
+}
+
+// Demo siparisler
 const orderCount = db.prepare('SELECT COUNT(*) as count FROM siparisler').get();
 if (orderCount.count === 0) {
   const demoOrders = [
     {
       date: '2024-12-09',
-      order_no: 'ORD-001',
+      order_no: generateOrderNumber(),
+      order_type: 'sale',
+      branch_id: 1,
       location: 'Istanbul',
       customer_name: 'Ahmet Yilmaz',
       customer_address: 'Kadikoy, Istanbul',
       customer_country: 'Almanya',
       customer_city: 'Berlin',
+      customer_state: 'Berlin',
       customer_phone: '+90 532 111 2233',
       customer_email: 'ahmet@example.com',
       salesman: 'Mehmet Demir',
@@ -123,19 +375,25 @@ if (orderCount.count === 0) {
       agency: 'Premium Tours',
       guide: 'Ali Kaya',
       products: JSON.stringify([
-        { name: 'El Dokuma Hali', quantity: '2', size: '200x300', price: '1500', cost: '800', notes: 'Ozel siparis' },
-        { name: 'Ipek Hali', quantity: '1', size: '150x200', price: '2500', cost: '1200', notes: '' }
+        { name: 'El Dokuma Hali', quantity: 2, size: '200x300', width: 200, height: 300, sqm: 6, price: 1500, cost: 800, notes: 'Ozel siparis' },
+        { name: 'Ipek Hali', quantity: 1, size: '150x200', width: 150, height: 200, sqm: 3, price: 2500, cost: 1200, notes: '' }
       ]),
-      process: 'Teslim Edildi'
+      subtotal: 5500,
+      total: 5500,
+      process: 'Teslim Edildi',
+      payment_status: 'paid'
     },
     {
       date: '2024-12-08',
-      order_no: 'ORD-002',
+      order_no: generateOrderNumber(),
+      order_type: 'sale',
+      branch_id: 2,
       location: 'Ankara',
       customer_name: 'Hans Mueller',
       customer_address: 'Munich, Germany',
       customer_country: 'Almanya',
       customer_city: 'Munih',
+      customer_state: 'Bavaria',
       customer_phone: '+49 123 456 7890',
       customer_email: 'hans@example.de',
       salesman: 'Ayse Ozturk',
@@ -143,18 +401,24 @@ if (orderCount.count === 0) {
       agency: 'Euro Travel',
       guide: 'Fatma Yildiz',
       products: JSON.stringify([
-        { name: 'Antik Hali', quantity: '1', size: '300x400', price: '5000', cost: '2500', notes: 'Koleksiyon parcasi' }
+        { name: 'Antik Hali', quantity: 1, size: '300x400', width: 300, height: 400, sqm: 12, price: 5000, cost: 2500, notes: 'Koleksiyon parcasi' }
       ]),
-      process: 'Transfer Aşamasında'
+      subtotal: 5000,
+      total: 5000,
+      process: 'Transfer Aşamasında',
+      payment_status: 'partial'
     },
     {
       date: '2024-12-07',
-      order_no: 'ORD-003',
+      order_no: generateOrderNumber(),
+      order_type: 'sale',
+      branch_id: 3,
       location: 'Izmir',
       customer_name: 'Marie Dubois',
       customer_address: 'Paris, France',
       customer_country: 'Fransa',
       customer_city: 'Paris',
+      customer_state: 'Île-de-France',
       customer_phone: '+33 1 23 45 67 89',
       customer_email: 'marie@example.fr',
       salesman: 'Mehmet Demir',
@@ -162,38 +426,137 @@ if (orderCount.count === 0) {
       agency: 'France Tours',
       guide: 'Kemal Aslan',
       products: JSON.stringify([
-        { name: 'Modern Hali', quantity: '3', size: '100x150', price: '800', cost: '400', notes: '' },
-        { name: 'Kilim', quantity: '2', size: '80x120', price: '350', cost: '150', notes: 'Hediye paketleme' }
+        { name: 'Modern Hali', quantity: 3, size: '100x150', width: 100, height: 150, sqm: 1.5, price: 800, cost: 400, notes: '' },
+        { name: 'Kilim', quantity: 2, size: '80x120', width: 80, height: 120, sqm: 0.96, price: 350, cost: 150, notes: 'Hediye paketleme' }
       ]),
-      process: 'Sipariş Oluşturuldu'
+      subtotal: 3100,
+      total: 3100,
+      process: 'Sipariş Oluşturuldu',
+      payment_status: 'pending'
     }
   ];
 
   const insertOrder = db.prepare(`
-    INSERT INTO siparisler (date, order_no, location, customer_name, customer_address,
-      customer_country, customer_city, customer_phone, customer_email,
-      salesman, conference, agency, guide, products, process)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO siparisler (date, order_no, order_type, branch_id, location, customer_name, customer_address,
+      customer_country, customer_city, customer_state, customer_phone, customer_email,
+      salesman, conference, agency, guide, products, subtotal, total, process, payment_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   demoOrders.forEach(order => {
     insertOrder.run(
-      order.date, order.order_no, order.location, order.customer_name, order.customer_address,
-      order.customer_country, order.customer_city, order.customer_phone, order.customer_email,
-      order.salesman, order.conference, order.agency, order.guide, order.products, order.process
+      order.date, order.order_no, order.order_type, order.branch_id, order.location,
+      order.customer_name, order.customer_address, order.customer_country, order.customer_city,
+      order.customer_state, order.customer_phone, order.customer_email, order.salesman,
+      order.conference, order.agency, order.guide, order.products, order.subtotal,
+      order.total, order.process, order.payment_status
     );
   });
 
-  console.log('Demo siparisler olusturuldu (3 siparis)');
+  console.log('Demo siparisler olusturuldu');
+}
+
+// Demo urunler
+const productCount = db.prepare('SELECT COUNT(*) as count FROM urunler').get();
+if (productCount.count === 0) {
+  const products = [
+    { name: 'El Dokuma Halı', sku: 'ED-001', barcode: '8690001000001', category: 'El Dokuma', price: 1500, cost: 800, price_usd: 43.48, width: 200, height: 300, sqm: 6 },
+    { name: 'İpek Halı', sku: 'IP-001', barcode: '8690001000002', category: 'İpek', price: 2500, cost: 1200, price_usd: 72.46, width: 150, height: 200, sqm: 3 },
+    { name: 'Antik Halı', sku: 'AN-001', barcode: '8690001000003', category: 'Antika', price: 5000, cost: 2500, price_usd: 144.93, width: 300, height: 400, sqm: 12 },
+    { name: 'Modern Halı', sku: 'MD-001', barcode: '8690001000004', category: 'Modern', price: 800, cost: 400, price_usd: 23.19, width: 100, height: 150, sqm: 1.5 },
+    { name: 'Kilim', sku: 'KL-001', barcode: '8690001000005', category: 'Kilim', price: 350, cost: 150, price_usd: 10.14, width: 80, height: 120, sqm: 0.96 },
+    { name: 'Yolluk Halı', sku: 'YL-001', barcode: '8690001000006', category: 'Yolluk', price: 450, cost: 200, price_usd: 13.04, width: 80, height: 300, sqm: 2.4 }
+  ];
+
+  const insertProduct = db.prepare(`
+    INSERT INTO urunler (name, sku, barcode, category, default_price, default_cost, price_local, price_usd, width, height, sqm, stock_quantity)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  products.forEach(p => {
+    insertProduct.run(p.name, p.sku, p.barcode, p.category, p.price, p.cost, p.price, p.price_usd, p.width, p.height, p.sqm, 100);
+  });
+
+  console.log('Demo urunler olusturuldu');
 }
 
 console.log('SQLite veritabanina baglandi');
 
+// ==================== HELPER FUNCTIONS ====================
+
+function generateOrderNumber() {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `ORD-${timestamp}-${random}`;
+}
+
+function logActivity(userId, userName, action, entityType, entityId, entityName, oldValue, newValue, details, branchId) {
+  try {
+    db.prepare(`
+      INSERT INTO islem_kayitlari (user_id, user_name, action, entity_type, entity_id, entity_name, old_value, new_value, details, branch_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, userName, action, entityType, entityId, entityName,
+           oldValue ? JSON.stringify(oldValue) : null,
+           newValue ? JSON.stringify(newValue) : null,
+           details, branchId);
+  } catch (error) {
+    console.error('Activity log hatasi:', error);
+  }
+}
+
+function createNotification(userId, title, message, type, entityType, entityId) {
+  try {
+    db.prepare(`
+      INSERT INTO bildirimler (user_id, title, message, type, entity_type, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(userId, title, message, type, entityType, entityId);
+  } catch (error) {
+    console.error('Notification hatasi:', error);
+  }
+}
+
+function formatPhoneNumber(phone, countryCode) {
+  if (!phone) return '';
+
+  // Remove all non-numeric characters
+  const cleaned = phone.replace(/\D/g, '');
+
+  // Format based on country code
+  switch(countryCode) {
+    case '+90': // Turkey
+      if (cleaned.length === 10) {
+        return `${cleaned.slice(0,3)} ${cleaned.slice(3,6)} ${cleaned.slice(6,8)} ${cleaned.slice(8)}`;
+      }
+      break;
+    case '+1': // USA/Canada
+      if (cleaned.length === 10) {
+        return `(${cleaned.slice(0,3)}) ${cleaned.slice(3,6)}-${cleaned.slice(6)}`;
+      }
+      break;
+    case '+49': // Germany
+      if (cleaned.length >= 10) {
+        return `${cleaned.slice(0,3)} ${cleaned.slice(3,6)} ${cleaned.slice(6)}`;
+      }
+      break;
+    case '+44': // UK
+      if (cleaned.length === 10) {
+        return `${cleaned.slice(0,4)} ${cleaned.slice(4)}`;
+      }
+      break;
+    default:
+      return cleaned;
+  }
+
+  return cleaned;
+}
+
 // ==================== API ENDPOINTS ====================
+
+// ==================== AUTH ====================
 
 // Kullanici kaydi
 app.post('/api/register', async (req, res) => {
-  const { Ad_Soyad, email, telefon, sifre, sifre_tekrar } = req.body;
+  const { Ad_Soyad, email, telefon, sifre, sifre_tekrar, branch_id } = req.body;
 
   if (sifre !== sifre_tekrar) {
     return res.status(400).json({ error: 'Sifreler eslesmiyor' });
@@ -203,11 +566,13 @@ app.post('/api/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(sifre, 10);
 
     const stmt = db.prepare(`
-      INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki)
-      VALUES (?, ?, ?, ?, 'Operasyon Sorumlusu')
+      INSERT INTO users (Ad_Soyad, email, telefon, sifre, yetki, branch_id)
+      VALUES (?, ?, ?, ?, 'Operasyon Sorumlusu', ?)
     `);
 
-    const result = stmt.run(Ad_Soyad, email, telefon, hashedPassword);
+    const result = stmt.run(Ad_Soyad, email, telefon, hashedPassword, branch_id || 1);
+
+    logActivity(result.lastInsertRowid, Ad_Soyad, 'register', 'user', result.lastInsertRowid, Ad_Soyad, null, null, 'Yeni kullanici kaydi', branch_id);
 
     res.status(201).json({
       message: 'Kullanici basariyla kaydedildi',
@@ -224,7 +589,7 @@ app.post('/api/register', async (req, res) => {
 
 // Login
 app.post('/api/login', async (req, res) => {
-  const { email, sifre } = req.body;
+  const { email, sifre, branch_id } = req.body;
 
   if (!email || !sifre) {
     return res.status(400).json({ error: 'Email ve sifre gerekli' });
@@ -237,20 +602,40 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Email veya sifre hatali' });
     }
 
+    if (!user.is_active) {
+      return res.status(401).json({ error: 'Hesabiniz devre disi birakilmis' });
+    }
+
     const isPasswordValid = await bcrypt.compare(sifre, user.sifre);
 
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Email veya sifre hatali' });
     }
 
+    // Update last login
+    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+
+    // Log activity
+    logActivity(user.id, user.Ad_Soyad, 'login', 'user', user.id, user.Ad_Soyad, null, null, 'Kullanici girisi', branch_id || user.branch_id);
+
     const permissions = user.ek_yetkiler ? user.ek_yetkiler.split(',') : [];
+
+    // Get branch info
+    let branch = null;
+    const activeBranchId = branch_id || user.branch_id;
+    if (activeBranchId) {
+      branch = db.prepare('SELECT * FROM subeler WHERE id = ?').get(activeBranchId);
+    }
 
     res.json({
       message: 'Giris basarili',
       userId: user.id,
       yetki: user.yetki,
       Ad_Soyad: user.Ad_Soyad,
-      permissions: permissions
+      email: user.email,
+      permissions: permissions,
+      branch_id: activeBranchId,
+      branch: branch
     });
   } catch (error) {
     console.error('Login hatasi:', error);
@@ -258,84 +643,17 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Siparis olusturma
-app.post('/api/orders', (req, res) => {
-  const orderData = req.body;
-
-  try {
-    const stmt = db.prepare(`
-      INSERT INTO siparisler (date, order_no, location, customer_name, customer_address,
-        customer_country, customer_city, customer_phone, customer_email,
-        salesman, conference, agency, guide, products, process)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = stmt.run(
-      orderData.date,
-      orderData.orderNo,
-      orderData.location,
-      orderData.customerInfo.nameSurname,
-      orderData.customerInfo.address,
-      orderData.customerInfo.country,
-      orderData.customerInfo.city,
-      orderData.customerInfo.phone,
-      orderData.customerInfo.email,
-      orderData.shipping.salesman,
-      orderData.shipping.conference,
-      orderData.shipping.agency,
-      orderData.shipping.guide,
-      JSON.stringify(orderData.products),
-      'Sipariş Oluşturuldu'
-    );
-
-    res.status(201).json({
-      message: 'Siparis basariyla kaydedildi',
-      orderId: result.lastInsertRowid
-    });
-  } catch (error) {
-    console.error('Siparis kaydetme hatasi:', error);
-    res.status(500).json({ error: 'Siparis kaydedilemedi' });
-  }
-});
-
-// Tum siparisleri getir
-app.get('/api/orders', (req, res) => {
-  try {
-    const orders = db.prepare('SELECT * FROM siparisler ORDER BY date DESC').all();
-    res.json(orders);
-  } catch (error) {
-    console.error('Siparisleri getirme hatasi:', error);
-    res.status(500).json({ error: 'Siparisler getirilemedi' });
-  }
-});
-
-// Siparis durumunu guncelle
-app.put('/api/orders/:id/process', (req, res) => {
-  const { id } = req.params;
-  const { process } = req.body;
-
-  try {
-    const result = db.prepare('UPDATE siparisler SET process = ? WHERE id = ?').run(process, id);
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Siparis bulunamadi' });
-    }
-
-    res.json({
-      message: 'Siparis durumu basariyla guncellendi',
-      process: process,
-      orderId: id
-    });
-  } catch (error) {
-    console.error('Durum guncelleme hatasi:', error);
-    res.status(500).json({ error: 'Siparis durumu guncellenemedi' });
-  }
-});
+// ==================== USERS ====================
 
 // Kullanici listesi
 app.get('/api/users', (req, res) => {
   try {
-    const users = db.prepare('SELECT id, Ad_Soyad, email, telefon, yetki FROM users').all();
+    const users = db.prepare(`
+      SELECT u.id, u.Ad_Soyad, u.email, u.telefon, u.yetki, u.branch_id, u.is_active, u.last_login,
+             s.name as branch_name
+      FROM users u
+      LEFT JOIN subeler s ON u.branch_id = s.id
+    `).all();
     res.json(users);
   } catch (error) {
     console.error('Kullanici listesi hatasi:', error);
@@ -343,10 +661,35 @@ app.get('/api/users', (req, res) => {
   }
 });
 
+// Kullanici detay
+app.get('/api/users/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = db.prepare(`
+      SELECT u.*, s.name as branch_name
+      FROM users u
+      LEFT JOIN subeler s ON u.branch_id = s.id
+      WHERE u.id = ?
+    `).get(id);
+
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanici bulunamadi' });
+    }
+
+    // Remove password
+    delete user.sifre;
+
+    res.json(user);
+  } catch (error) {
+    console.error('Kullanici detay hatasi:', error);
+    res.status(500).json({ error: 'Kullanici getirilemedi' });
+  }
+});
+
 // Kullanici yetkisini guncelle
 app.put('/api/users/:id/role', (req, res) => {
   const { id } = req.params;
-  const { yetki } = req.body;
+  const { yetki, updated_by } = req.body;
 
   const validRoles = ['Operasyon Sorumlusu', 'Depo Görevlisi', 'Lojistik Sorumlusu'];
   if (!validRoles.includes(yetki)) {
@@ -354,7 +697,7 @@ app.put('/api/users/:id/role', (req, res) => {
   }
 
   try {
-    const user = db.prepare('SELECT yetki FROM users WHERE id = ?').get(id);
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
     if (!user) {
       return res.status(404).json({ error: 'Kullanici bulunamadi' });
@@ -364,7 +707,10 @@ app.put('/api/users/:id/role', (req, res) => {
       return res.status(403).json({ error: 'Patron rolundeki kullanicinin yetkisi degistirilemez' });
     }
 
+    const oldRole = user.yetki;
     db.prepare('UPDATE users SET yetki = ? WHERE id = ?').run(yetki, id);
+
+    logActivity(updated_by, null, 'update_role', 'user', id, user.Ad_Soyad, { yetki: oldRole }, { yetki }, 'Yetki degistirildi', user.branch_id);
 
     res.json({
       message: 'Yetki basariyla guncellendi',
@@ -399,10 +745,10 @@ app.get('/api/users/:id/permissions', (req, res) => {
 // Kullanicinin ek yetkilerini guncelle
 app.put('/api/users/:id/permissions', (req, res) => {
   const { id } = req.params;
-  const { permissions } = req.body;
+  const { permissions, updated_by } = req.body;
 
   try {
-    const user = db.prepare('SELECT yetki FROM users WHERE id = ?').get(id);
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
     if (!user) {
       return res.status(404).json({ error: 'Kullanici bulunamadi' });
@@ -412,8 +758,11 @@ app.put('/api/users/:id/permissions', (req, res) => {
       return res.status(403).json({ error: 'Patron rolundeki kullanicinin ek yetkileri degistirilemez' });
     }
 
+    const oldPermissions = user.ek_yetkiler;
     const permissionsString = Array.isArray(permissions) ? permissions.join(',') : '';
     db.prepare('UPDATE users SET ek_yetkiler = ? WHERE id = ?').run(permissionsString, id);
+
+    logActivity(updated_by, null, 'update_permissions', 'user', id, user.Ad_Soyad, { permissions: oldPermissions }, { permissions: permissionsString }, 'Ek yetkiler degistirildi', user.branch_id);
 
     res.json({
       message: 'Ek yetkiler basariyla guncellendi',
@@ -426,12 +775,180 @@ app.put('/api/users/:id/permissions', (req, res) => {
   }
 });
 
-// ==================== MUSTERI API ENDPOINTS ====================
+// Kullanici subesini guncelle
+app.put('/api/users/:id/branch', (req, res) => {
+  const { id } = req.params;
+  const { branch_id, updated_by } = req.body;
+
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Kullanici bulunamadi' });
+    }
+
+    const oldBranch = user.branch_id;
+    db.prepare('UPDATE users SET branch_id = ? WHERE id = ?').run(branch_id, id);
+
+    logActivity(updated_by, null, 'update_branch', 'user', id, user.Ad_Soyad, { branch_id: oldBranch }, { branch_id }, 'Sube degistirildi', branch_id);
+
+    res.json({ message: 'Sube basariyla guncellendi', userId: id, branch_id });
+  } catch (error) {
+    console.error('Sube guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Sube guncellenemedi' });
+  }
+});
+
+// ==================== BRANCHES ====================
+
+// Tum subeleri getir
+app.get('/api/branches', (req, res) => {
+  try {
+    const branches = db.prepare(`
+      SELECT s.*, u.Ad_Soyad as manager_name,
+             (SELECT COUNT(*) FROM users WHERE branch_id = s.id) as user_count,
+             (SELECT COUNT(*) FROM siparisler WHERE branch_id = s.id) as order_count
+      FROM subeler s
+      LEFT JOIN users u ON s.manager_id = u.id
+      ORDER BY s.name ASC
+    `).all();
+    res.json(branches);
+  } catch (error) {
+    console.error('Sube listesi hatasi:', error);
+    res.status(500).json({ error: 'Subeler getirilemedi' });
+  }
+});
+
+// Sube detay
+app.get('/api/branches/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const branch = db.prepare(`
+      SELECT s.*, u.Ad_Soyad as manager_name
+      FROM subeler s
+      LEFT JOIN users u ON s.manager_id = u.id
+      WHERE s.id = ?
+    `).get(id);
+
+    if (!branch) {
+      return res.status(404).json({ error: 'Sube bulunamadi' });
+    }
+
+    // Get branch users
+    const users = db.prepare('SELECT id, Ad_Soyad, yetki FROM users WHERE branch_id = ?').all(id);
+    branch.users = users;
+
+    // Get branch stock
+    const stock = db.prepare(`
+      SELECT ss.*, u.name as product_name, u.sku
+      FROM sube_stok ss
+      JOIN urunler u ON ss.product_id = u.id
+      WHERE ss.branch_id = ?
+    `).all(id);
+    branch.stock = stock;
+
+    res.json(branch);
+  } catch (error) {
+    console.error('Sube detay hatasi:', error);
+    res.status(500).json({ error: 'Sube getirilemedi' });
+  }
+});
+
+// Yeni sube ekle
+app.post('/api/branches', (req, res) => {
+  const { name, code, address, city, state, country, phone, email, manager_id, created_by } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO subeler (name, code, address, city, state, country, phone, email, manager_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(name, code, address, city, state, country || 'Türkiye', phone, email, manager_id);
+
+    logActivity(created_by, null, 'create', 'branch', result.lastInsertRowid, name, null, req.body, 'Yeni sube eklendi', result.lastInsertRowid);
+
+    res.status(201).json({
+      message: 'Sube basariyla eklendi',
+      branchId: result.lastInsertRowid
+    });
+  } catch (error) {
+    console.error('Sube ekleme hatasi:', error);
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(400).json({ error: 'Bu sube kodu zaten mevcut' });
+    }
+    res.status(500).json({ error: 'Sube eklenemedi' });
+  }
+});
+
+// Sube guncelle
+app.put('/api/branches/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, code, address, city, state, country, phone, email, manager_id, is_active, updated_by } = req.body;
+
+  try {
+    const oldBranch = db.prepare('SELECT * FROM subeler WHERE id = ?').get(id);
+    if (!oldBranch) {
+      return res.status(404).json({ error: 'Sube bulunamadi' });
+    }
+
+    const result = db.prepare(`
+      UPDATE subeler SET name=?, code=?, address=?, city=?, state=?, country=?, phone=?, email=?, manager_id=?, is_active=?
+      WHERE id=?
+    `).run(name, code, address, city, state, country, phone, email, manager_id, is_active ? 1 : 0, id);
+
+    logActivity(updated_by, null, 'update', 'branch', id, name, oldBranch, req.body, 'Sube guncellendi', id);
+
+    res.json({ message: 'Sube guncellendi', branchId: id });
+  } catch (error) {
+    console.error('Sube guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Sube guncellenemedi' });
+  }
+});
+
+// Sube sil
+app.delete('/api/branches/:id', (req, res) => {
+  const { id } = req.params;
+  const { deleted_by } = req.body;
+
+  try {
+    const branch = db.prepare('SELECT * FROM subeler WHERE id = ?').get(id);
+    if (!branch) {
+      return res.status(404).json({ error: 'Sube bulunamadi' });
+    }
+
+    // Check if branch has users
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE branch_id = ?').get(id);
+    if (userCount.count > 0) {
+      return res.status(400).json({ error: 'Bu subede kullanicilar mevcut. Once kullanicilari baska subeye aktarin.' });
+    }
+
+    db.prepare('DELETE FROM subeler WHERE id = ?').run(id);
+
+    logActivity(deleted_by, null, 'delete', 'branch', id, branch.name, branch, null, 'Sube silindi', null);
+
+    res.json({ message: 'Sube silindi' });
+  } catch (error) {
+    console.error('Sube silme hatasi:', error);
+    res.status(500).json({ error: 'Sube silinemedi' });
+  }
+});
+
+// ==================== CUSTOMERS ====================
 
 // Tum musterileri getir
 app.get('/api/customers', (req, res) => {
+  const { branch_id } = req.query;
   try {
-    const customers = db.prepare('SELECT * FROM musteriler ORDER BY name ASC').all();
+    let query = 'SELECT * FROM musteriler';
+    let params = [];
+
+    if (branch_id) {
+      query += ' WHERE created_by IN (SELECT id FROM users WHERE branch_id = ?)';
+      params.push(branch_id);
+    }
+
+    query += ' ORDER BY name ASC';
+
+    const customers = db.prepare(query).all(...params);
     res.json(customers);
   } catch (error) {
     console.error('Musteri listesi hatasi:', error);
@@ -445,9 +962,9 @@ app.get('/api/customers/search', (req, res) => {
   try {
     const customers = db.prepare(`
       SELECT * FROM musteriler
-      WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
+      WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? OR tax_number LIKE ? OR passport_number LIKE ?
       ORDER BY name ASC
-    `).all(`%${q}%`, `%${q}%`, `%${q}%`);
+    `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     res.json(customers);
   } catch (error) {
     console.error('Musteri arama hatasi:', error);
@@ -455,16 +972,60 @@ app.get('/api/customers/search', (req, res) => {
   }
 });
 
+// Musteri detay
+app.get('/api/customers/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const customer = db.prepare('SELECT * FROM musteriler WHERE id = ?').get(id);
+    if (!customer) {
+      return res.status(404).json({ error: 'Musteri bulunamadi' });
+    }
+
+    // Get customer orders
+    const orders = db.prepare('SELECT * FROM siparisler WHERE customer_id = ? ORDER BY date DESC').all(id);
+    customer.orders = orders;
+
+    // Get customer documents
+    const documents = db.prepare('SELECT * FROM musteri_belgeleri WHERE customer_id = ?').all(id);
+    customer.documents = documents;
+
+    // Get activity logs
+    const logs = db.prepare(`
+      SELECT * FROM islem_kayitlari
+      WHERE entity_type = 'customer' AND entity_id = ?
+      ORDER BY created_at DESC LIMIT 20
+    `).all(id);
+    customer.activity_logs = logs;
+
+    res.json(customer);
+  } catch (error) {
+    console.error('Musteri detay hatasi:', error);
+    res.status(500).json({ error: 'Musteri getirilemedi' });
+  }
+});
+
 // Yeni musteri ekle
 app.post('/api/customers', (req, res) => {
-  const { name, email, phone, country, city, address, notes } = req.body;
+  const {
+    name, email, phone, phone_country_code, country, country_code, city, state, address, postal_code,
+    shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
+    tax_number, passport_number, id_number, notes, customer_type, latitude, longitude, created_by
+  } = req.body;
 
   try {
+    const phone_formatted = formatPhoneNumber(phone, phone_country_code || '+90');
+
     const stmt = db.prepare(`
-      INSERT INTO musteriler (name, email, phone, country, city, address, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO musteriler (name, email, phone, phone_country_code, phone_formatted, country, country_code, city, state, address, postal_code,
+        shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
+        tax_number, passport_number, id_number, notes, customer_type, latitude, longitude, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(name, email, phone, country, city, address, notes);
+    const result = stmt.run(name, email, phone, phone_country_code || '+90', phone_formatted, country, country_code, city, state, address, postal_code,
+      shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
+      tax_number, passport_number, id_number, notes, customer_type || 'individual', latitude, longitude, created_by);
+
+    logActivity(created_by, null, 'create', 'customer', result.lastInsertRowid, name, null, req.body, 'Yeni musteri eklendi', null);
 
     res.status(201).json({
       message: 'Musteri basariyla eklendi',
@@ -479,17 +1040,35 @@ app.post('/api/customers', (req, res) => {
 // Musteri guncelle
 app.put('/api/customers/:id', (req, res) => {
   const { id } = req.params;
-  const { name, email, phone, country, city, address, notes } = req.body;
+  const {
+    name, email, phone, phone_country_code, country, country_code, city, state, address, postal_code,
+    shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
+    tax_number, passport_number, id_number, notes, customer_type, latitude, longitude, updated_by
+  } = req.body;
 
   try {
+    const oldCustomer = db.prepare('SELECT * FROM musteriler WHERE id = ?').get(id);
+    if (!oldCustomer) {
+      return res.status(404).json({ error: 'Musteri bulunamadi' });
+    }
+
+    const phone_formatted = formatPhoneNumber(phone, phone_country_code || '+90');
+
     const result = db.prepare(`
-      UPDATE musteriler SET name=?, email=?, phone=?, country=?, city=?, address=?, notes=?
+      UPDATE musteriler SET
+        name=?, email=?, phone=?, phone_country_code=?, phone_formatted=?, country=?, country_code=?, city=?, state=?, address=?, postal_code=?,
+        shipping_address=?, shipping_city=?, shipping_state=?, shipping_country=?, shipping_postal_code=?,
+        tax_number=?, passport_number=?, id_number=?, notes=?, customer_type=?, latitude=?, longitude=?, updated_by=?, updated_at=CURRENT_TIMESTAMP
       WHERE id=?
-    `).run(name, email, phone, country, city, address, notes, id);
+    `).run(name, email, phone, phone_country_code || '+90', phone_formatted, country, country_code, city, state, address, postal_code,
+      shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
+      tax_number, passport_number, id_number, notes, customer_type, latitude, longitude, updated_by, id);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Musteri bulunamadi' });
     }
+
+    logActivity(updated_by, null, 'update', 'customer', id, name, oldCustomer, req.body, 'Musteri guncellendi', null);
 
     res.json({ message: 'Musteri guncellendi', customerId: id });
   } catch (error) {
@@ -501,13 +1080,21 @@ app.put('/api/customers/:id', (req, res) => {
 // Musteri sil
 app.delete('/api/customers/:id', (req, res) => {
   const { id } = req.params;
+  const { deleted_by } = req.body;
 
   try {
-    const result = db.prepare('DELETE FROM musteriler WHERE id = ?').run(id);
-
-    if (result.changes === 0) {
+    const customer = db.prepare('SELECT * FROM musteriler WHERE id = ?').get(id);
+    if (!customer) {
       return res.status(404).json({ error: 'Musteri bulunamadi' });
     }
+
+    // Delete customer documents first
+    db.prepare('DELETE FROM musteri_belgeleri WHERE customer_id = ?').run(id);
+
+    // Delete customer
+    db.prepare('DELETE FROM musteriler WHERE id = ?').run(id);
+
+    logActivity(deleted_by, null, 'delete', 'customer', id, customer.name, customer, null, 'Musteri silindi', null);
 
     res.json({ message: 'Musteri silindi' });
   } catch (error) {
@@ -516,12 +1103,91 @@ app.delete('/api/customers/:id', (req, res) => {
   }
 });
 
-// ==================== URUN API ENDPOINTS ====================
+// Musteri belgesi ekle
+app.post('/api/customers/:id/documents', (req, res) => {
+  const { id } = req.params;
+  const { document_type, document_name, document_data, mime_type, uploaded_by } = req.body;
+
+  try {
+    const customer = db.prepare('SELECT * FROM musteriler WHERE id = ?').get(id);
+    if (!customer) {
+      return res.status(404).json({ error: 'Musteri bulunamadi' });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO musteri_belgeleri (customer_id, document_type, document_name, document_data, mime_type, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(id, document_type, document_name, document_data, mime_type, uploaded_by);
+
+    logActivity(uploaded_by, null, 'upload_document', 'customer', id, customer.name, null, { document_type, document_name }, 'Belge yuklendi', null);
+
+    res.status(201).json({
+      message: 'Belge basariyla yuklendi',
+      documentId: result.lastInsertRowid
+    });
+  } catch (error) {
+    console.error('Belge yukleme hatasi:', error);
+    res.status(500).json({ error: 'Belge yuklenemedi' });
+  }
+});
+
+// Musteri belgeleri
+app.get('/api/customers/:id/documents', (req, res) => {
+  const { id } = req.params;
+  try {
+    const documents = db.prepare('SELECT * FROM musteri_belgeleri WHERE customer_id = ?').all(id);
+    res.json(documents);
+  } catch (error) {
+    console.error('Belge listesi hatasi:', error);
+    res.status(500).json({ error: 'Belgeler getirilemedi' });
+  }
+});
+
+// Belge sil
+app.delete('/api/customers/:customerId/documents/:docId', (req, res) => {
+  const { customerId, docId } = req.params;
+  const { deleted_by } = req.body;
+
+  try {
+    const doc = db.prepare('SELECT * FROM musteri_belgeleri WHERE id = ? AND customer_id = ?').get(docId, customerId);
+    if (!doc) {
+      return res.status(404).json({ error: 'Belge bulunamadi' });
+    }
+
+    db.prepare('DELETE FROM musteri_belgeleri WHERE id = ?').run(docId);
+
+    logActivity(deleted_by, null, 'delete_document', 'customer', customerId, doc.document_name, doc, null, 'Belge silindi', null);
+
+    res.json({ message: 'Belge silindi' });
+  } catch (error) {
+    console.error('Belge silme hatasi:', error);
+    res.status(500).json({ error: 'Belge silinemedi' });
+  }
+});
+
+// ==================== PRODUCTS ====================
 
 // Tum urunleri getir
 app.get('/api/products', (req, res) => {
+  const { branch_id, category } = req.query;
   try {
-    const products = db.prepare('SELECT * FROM urunler ORDER BY name ASC').all();
+    let query = 'SELECT * FROM urunler WHERE 1=1';
+    let params = [];
+
+    if (branch_id) {
+      query += ' AND (branch_id = ? OR branch_id IS NULL)';
+      params.push(branch_id);
+    }
+
+    if (category) {
+      query += ' AND category = ?';
+      params.push(category);
+    }
+
+    query += ' ORDER BY name ASC';
+
+    const products = db.prepare(query).all(...params);
     res.json(products);
   } catch (error) {
     console.error('Urun listesi hatasi:', error);
@@ -529,16 +1195,66 @@ app.get('/api/products', (req, res) => {
   }
 });
 
+// Urun barkod ile ara
+app.get('/api/products/barcode/:barcode', (req, res) => {
+  const { barcode } = req.params;
+  try {
+    const product = db.prepare('SELECT * FROM urunler WHERE barcode = ?').get(barcode);
+    if (!product) {
+      return res.status(404).json({ error: 'Urun bulunamadi' });
+    }
+    res.json(product);
+  } catch (error) {
+    console.error('Barkod arama hatasi:', error);
+    res.status(500).json({ error: 'Urun getirilemedi' });
+  }
+});
+
+// Urun detay
+app.get('/api/products/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const product = db.prepare('SELECT * FROM urunler WHERE id = ?').get(id);
+    if (!product) {
+      return res.status(404).json({ error: 'Urun bulunamadi' });
+    }
+
+    // Get branch stocks
+    const stocks = db.prepare(`
+      SELECT ss.*, s.name as branch_name
+      FROM sube_stok ss
+      JOIN subeler s ON ss.branch_id = s.id
+      WHERE ss.product_id = ?
+    `).all(id);
+    product.branch_stocks = stocks;
+
+    res.json(product);
+  } catch (error) {
+    console.error('Urun detay hatasi:', error);
+    res.status(500).json({ error: 'Urun getirilemedi' });
+  }
+});
+
 // Yeni urun ekle
 app.post('/api/products', (req, res) => {
-  const { name, category, default_price, default_cost, sizes, description, in_stock } = req.body;
+  const {
+    name, sku, barcode, category, default_price, default_cost, price_local, price_usd, currency,
+    width, height, unit_type, sizes, description, in_stock, stock_quantity, min_stock_alert, branch_id, images, created_by
+  } = req.body;
 
   try {
+    // Calculate sqm if dimensions provided
+    const sqm = width && height ? (width * height / 10000) : null;
+
     const stmt = db.prepare(`
-      INSERT INTO urunler (name, category, default_price, default_cost, sizes, description, in_stock)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO urunler (name, sku, barcode, category, default_price, default_cost, price_local, price_usd, currency,
+        width, height, sqm, unit_type, sizes, description, in_stock, stock_quantity, min_stock_alert, branch_id, images)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(name, category, default_price, default_cost, sizes, description, in_stock ? 1 : 0);
+    const result = stmt.run(name, sku, barcode, category, default_price, default_cost, price_local || default_price, price_usd, currency || 'TRY',
+      width, height, sqm, unit_type || 'piece', sizes, description, in_stock ? 1 : 0, stock_quantity || 0, min_stock_alert || 5, branch_id, images);
+
+    logActivity(created_by, null, 'create', 'product', result.lastInsertRowid, name, null, req.body, 'Yeni urun eklendi', branch_id);
 
     res.status(201).json({
       message: 'Urun basariyla eklendi',
@@ -553,17 +1269,32 @@ app.post('/api/products', (req, res) => {
 // Urun guncelle
 app.put('/api/products/:id', (req, res) => {
   const { id } = req.params;
-  const { name, category, default_price, default_cost, sizes, description, in_stock } = req.body;
+  const {
+    name, sku, barcode, category, default_price, default_cost, price_local, price_usd, currency,
+    width, height, unit_type, sizes, description, in_stock, stock_quantity, min_stock_alert, branch_id, images, updated_by
+  } = req.body;
 
   try {
+    const oldProduct = db.prepare('SELECT * FROM urunler WHERE id = ?').get(id);
+    if (!oldProduct) {
+      return res.status(404).json({ error: 'Urun bulunamadi' });
+    }
+
+    const sqm = width && height ? (width * height / 10000) : null;
+
     const result = db.prepare(`
-      UPDATE urunler SET name=?, category=?, default_price=?, default_cost=?, sizes=?, description=?, in_stock=?
+      UPDATE urunler SET
+        name=?, sku=?, barcode=?, category=?, default_price=?, default_cost=?, price_local=?, price_usd=?, currency=?,
+        width=?, height=?, sqm=?, unit_type=?, sizes=?, description=?, in_stock=?, stock_quantity=?, min_stock_alert=?, branch_id=?, images=?, updated_at=CURRENT_TIMESTAMP
       WHERE id=?
-    `).run(name, category, default_price, default_cost, sizes, description, in_stock ? 1 : 0, id);
+    `).run(name, sku, barcode, category, default_price, default_cost, price_local, price_usd, currency,
+      width, height, sqm, unit_type, sizes, description, in_stock ? 1 : 0, stock_quantity, min_stock_alert, branch_id, images, id);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Urun bulunamadi' });
     }
+
+    logActivity(updated_by, null, 'update', 'product', id, name, oldProduct, req.body, 'Urun guncellendi', branch_id);
 
     res.json({ message: 'Urun guncellendi', productId: id });
   } catch (error) {
@@ -575,13 +1306,21 @@ app.put('/api/products/:id', (req, res) => {
 // Urun sil
 app.delete('/api/products/:id', (req, res) => {
   const { id } = req.params;
+  const { deleted_by } = req.body;
 
   try {
-    const result = db.prepare('DELETE FROM urunler WHERE id = ?').run(id);
-
-    if (result.changes === 0) {
+    const product = db.prepare('SELECT * FROM urunler WHERE id = ?').get(id);
+    if (!product) {
       return res.status(404).json({ error: 'Urun bulunamadi' });
     }
+
+    // Delete branch stocks first
+    db.prepare('DELETE FROM sube_stok WHERE product_id = ?').run(id);
+
+    // Delete product
+    db.prepare('DELETE FROM urunler WHERE id = ?').run(id);
+
+    logActivity(deleted_by, null, 'delete', 'product', id, product.name, product, null, 'Urun silindi', product.branch_id);
 
     res.json({ message: 'Urun silindi' });
   } catch (error) {
@@ -590,12 +1329,713 @@ app.delete('/api/products/:id', (req, res) => {
   }
 });
 
-// ==================== ANALYTICS API ENDPOINTS ====================
+// Sube stok guncelle
+app.put('/api/products/:id/stock/:branchId', (req, res) => {
+  const { id, branchId } = req.params;
+  const { quantity, min_stock, location, updated_by } = req.body;
+
+  try {
+    const existing = db.prepare('SELECT * FROM sube_stok WHERE product_id = ? AND branch_id = ?').get(id, branchId);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE sube_stok SET quantity=?, min_stock=?, location=?, updated_at=CURRENT_TIMESTAMP
+        WHERE product_id=? AND branch_id=?
+      `).run(quantity, min_stock, location, id, branchId);
+    } else {
+      db.prepare(`
+        INSERT INTO sube_stok (branch_id, product_id, quantity, min_stock, location)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(branchId, id, quantity, min_stock, location);
+    }
+
+    const product = db.prepare('SELECT name FROM urunler WHERE id = ?').get(id);
+    logActivity(updated_by, null, 'update_stock', 'product', id, product?.name, existing, { quantity, min_stock, location }, 'Stok guncellendi', branchId);
+
+    res.json({ message: 'Stok guncellendi' });
+  } catch (error) {
+    console.error('Stok guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Stok guncellenemedi' });
+  }
+});
+
+// ==================== ORDERS ====================
+
+// Siparis olusturma
+app.post('/api/orders', (req, res) => {
+  const orderData = req.body;
+
+  try {
+    const orderNo = generateOrderNumber();
+
+    // Calculate totals
+    let subtotal = 0;
+    const products = orderData.products || [];
+    products.forEach(p => {
+      const price = parseFloat(p.price) || 0;
+      const quantity = parseFloat(p.quantity) || 0;
+      subtotal += price * quantity;
+    });
+
+    const discount = parseFloat(orderData.discount) || 0;
+    const tax = parseFloat(orderData.tax) || 0;
+    const total = subtotal - discount + tax;
+
+    const stmt = db.prepare(`
+      INSERT INTO siparisler (date, order_no, order_type, branch_id, location, customer_id, customer_name, customer_address,
+        customer_country, customer_city, customer_state, customer_phone, customer_email,
+        shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
+        salesman, salesman_id, conference, agency, guide, products, subtotal, discount, discount_type, tax, total, currency, exchange_rate,
+        process, payment_status, notes, internal_notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      orderData.date || new Date().toISOString().split('T')[0],
+      orderNo,
+      orderData.order_type || 'sale',
+      orderData.branch_id,
+      orderData.location,
+      orderData.customer_id,
+      orderData.customerInfo?.nameSurname || orderData.customer_name,
+      orderData.customerInfo?.address || orderData.customer_address,
+      orderData.customerInfo?.country || orderData.customer_country,
+      orderData.customerInfo?.city || orderData.customer_city,
+      orderData.customerInfo?.state || orderData.customer_state,
+      orderData.customerInfo?.phone || orderData.customer_phone,
+      orderData.customerInfo?.email || orderData.customer_email,
+      orderData.shipping_address,
+      orderData.shipping_city,
+      orderData.shipping_state,
+      orderData.shipping_country,
+      orderData.shipping_postal_code,
+      orderData.shipping?.salesman || orderData.salesman,
+      orderData.salesman_id,
+      orderData.shipping?.conference || orderData.conference,
+      orderData.shipping?.agency || orderData.agency,
+      orderData.shipping?.guide || orderData.guide,
+      JSON.stringify(products),
+      subtotal,
+      discount,
+      orderData.discount_type || 'amount',
+      tax,
+      total,
+      orderData.currency || 'TRY',
+      orderData.exchange_rate || 1,
+      'Sipariş Oluşturuldu',
+      'pending',
+      orderData.notes,
+      orderData.internal_notes,
+      orderData.created_by
+    );
+
+    // Update customer totals if customer_id provided
+    if (orderData.customer_id) {
+      db.prepare(`
+        UPDATE musteriler SET
+          total_orders = total_orders + 1,
+          total_spent = total_spent + ?
+        WHERE id = ?
+      `).run(total, orderData.customer_id);
+    }
+
+    // Add shipping history entry
+    db.prepare(`
+      INSERT INTO sevkiyat_gecmisi (order_id, status, notes, updated_by)
+      VALUES (?, ?, ?, ?)
+    `).run(result.lastInsertRowid, 'Sipariş Oluşturuldu', 'Siparis olusturuldu', orderData.created_by);
+
+    logActivity(orderData.created_by, null, 'create', 'order', result.lastInsertRowid, orderNo, null, orderData, 'Yeni siparis olusturuldu', orderData.branch_id);
+
+    // Create notification
+    createNotification(null, 'Yeni Siparis', `${orderNo} numarali siparis olusturuldu`, 'info', 'order', result.lastInsertRowid);
+
+    res.status(201).json({
+      message: 'Siparis basariyla kaydedildi',
+      orderId: result.lastInsertRowid,
+      orderNo: orderNo
+    });
+  } catch (error) {
+    console.error('Siparis kaydetme hatasi:', error);
+    res.status(500).json({ error: 'Siparis kaydedilemedi' });
+  }
+});
+
+// Tum siparisleri getir
+app.get('/api/orders', (req, res) => {
+  const { branch_id, status, order_type, customer_id, from_date, to_date } = req.query;
+
+  try {
+    let query = `
+      SELECT s.*, b.name as branch_name
+      FROM siparisler s
+      LEFT JOIN subeler b ON s.branch_id = b.id
+      WHERE 1=1
+    `;
+    let params = [];
+
+    if (branch_id) {
+      query += ' AND s.branch_id = ?';
+      params.push(branch_id);
+    }
+
+    if (status) {
+      query += ' AND s.process = ?';
+      params.push(status);
+    }
+
+    if (order_type) {
+      query += ' AND s.order_type = ?';
+      params.push(order_type);
+    }
+
+    if (customer_id) {
+      query += ' AND s.customer_id = ?';
+      params.push(customer_id);
+    }
+
+    if (from_date) {
+      query += ' AND s.date >= ?';
+      params.push(from_date);
+    }
+
+    if (to_date) {
+      query += ' AND s.date <= ?';
+      params.push(to_date);
+    }
+
+    query += ' ORDER BY s.date DESC';
+
+    const orders = db.prepare(query).all(...params);
+    res.json(orders);
+  } catch (error) {
+    console.error('Siparisleri getirme hatasi:', error);
+    res.status(500).json({ error: 'Siparisler getirilemedi' });
+  }
+});
+
+// Siparis detay
+app.get('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const order = db.prepare(`
+      SELECT s.*, b.name as branch_name
+      FROM siparisler s
+      LEFT JOIN subeler b ON s.branch_id = b.id
+      WHERE s.id = ?
+    `).get(id);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    // Get payments
+    const payments = db.prepare('SELECT * FROM odemeler WHERE order_id = ?').all(id);
+    order.payments = payments;
+
+    // Get shipping history
+    const history = db.prepare(`
+      SELECT sh.*, u.Ad_Soyad as updated_by_name
+      FROM sevkiyat_gecmisi sh
+      LEFT JOIN users u ON sh.updated_by = u.id
+      WHERE sh.order_id = ?
+      ORDER BY sh.created_at DESC
+    `).all(id);
+    order.shipping_history = history;
+
+    // Get activity logs
+    const logs = db.prepare(`
+      SELECT * FROM islem_kayitlari
+      WHERE entity_type = 'order' AND entity_id = ?
+      ORDER BY created_at DESC LIMIT 20
+    `).all(id);
+    order.activity_logs = logs;
+
+    res.json(order);
+  } catch (error) {
+    console.error('Siparis detay hatasi:', error);
+    res.status(500).json({ error: 'Siparis getirilemedi' });
+  }
+});
+
+// Siparis guncelle
+app.put('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  const updateData = req.body;
+
+  try {
+    const oldOrder = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
+    if (!oldOrder) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    const result = db.prepare(`
+      UPDATE siparisler SET
+        customer_name=?, customer_address=?, customer_country=?, customer_city=?, customer_state=?,
+        customer_phone=?, customer_email=?, shipping_address=?, shipping_city=?, shipping_state=?,
+        shipping_country=?, shipping_postal_code=?, salesman=?, agency=?, guide=?,
+        cargo_company=?, cargo_tracking=?, bus_number=?, transport_number=?,
+        estimated_delivery=?, notes=?, internal_notes=?, updated_by=?, updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `).run(
+      updateData.customer_name, updateData.customer_address, updateData.customer_country,
+      updateData.customer_city, updateData.customer_state, updateData.customer_phone,
+      updateData.customer_email, updateData.shipping_address, updateData.shipping_city,
+      updateData.shipping_state, updateData.shipping_country, updateData.shipping_postal_code,
+      updateData.salesman, updateData.agency, updateData.guide,
+      updateData.cargo_company, updateData.cargo_tracking, updateData.bus_number, updateData.transport_number,
+      updateData.estimated_delivery, updateData.notes, updateData.internal_notes, updateData.updated_by, id
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    logActivity(updateData.updated_by, null, 'update', 'order', id, oldOrder.order_no, oldOrder, updateData, 'Siparis guncellendi', oldOrder.branch_id);
+
+    res.json({ message: 'Siparis guncellendi', orderId: id });
+  } catch (error) {
+    console.error('Siparis guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Siparis guncellenemedi' });
+  }
+});
+
+// Siparis durumunu guncelle
+app.put('/api/orders/:id/process', (req, res) => {
+  const { id } = req.params;
+  const { process, notes, updated_by } = req.body;
+
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    const oldProcess = order.process;
+
+    let updateQuery = 'UPDATE siparisler SET process = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP';
+    let params = [process, updated_by];
+
+    // Set actual delivery date if delivered
+    if (process === 'Teslim Edildi') {
+      updateQuery += ', actual_delivery = CURRENT_TIMESTAMP';
+    }
+
+    updateQuery += ' WHERE id = ?';
+    params.push(id);
+
+    db.prepare(updateQuery).run(...params);
+
+    // Add shipping history entry
+    db.prepare(`
+      INSERT INTO sevkiyat_gecmisi (order_id, status, notes, updated_by)
+      VALUES (?, ?, ?, ?)
+    `).run(id, process, notes || `Durum degistirildi: ${oldProcess} -> ${process}`, updated_by);
+
+    logActivity(updated_by, null, 'update_status', 'order', id, order.order_no, { process: oldProcess }, { process }, 'Siparis durumu guncellendi', order.branch_id);
+
+    // Create notification for status change
+    if (process === 'Transfer Aşamasında') {
+      createNotification(null, 'Siparis Transferde', `${order.order_no} transfer asamasinda`, 'warning', 'order', id);
+    } else if (process === 'Teslim Edildi') {
+      createNotification(null, 'Siparis Teslim Edildi', `${order.order_no} teslim edildi`, 'success', 'order', id);
+    }
+
+    res.json({
+      message: 'Siparis durumu basariyla guncellendi',
+      process: process,
+      orderId: id
+    });
+  } catch (error) {
+    console.error('Durum guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Siparis durumu guncellenemedi' });
+  }
+});
+
+// Siparis sil
+app.delete('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  const { deleted_by } = req.body;
+
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
+    if (!order) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    // Delete related data
+    db.prepare('DELETE FROM odemeler WHERE order_id = ?').run(id);
+    db.prepare('DELETE FROM sevkiyat_gecmisi WHERE order_id = ?').run(id);
+
+    // Delete order
+    db.prepare('DELETE FROM siparisler WHERE id = ?').run(id);
+
+    logActivity(deleted_by, null, 'delete', 'order', id, order.order_no, order, null, 'Siparis silindi', order.branch_id);
+
+    res.json({ message: 'Siparis silindi' });
+  } catch (error) {
+    console.error('Siparis silme hatasi:', error);
+    res.status(500).json({ error: 'Siparis silinemedi' });
+  }
+});
+
+// ==================== PAYMENTS ====================
+
+// Odeme ekle
+app.post('/api/payments', (req, res) => {
+  const {
+    order_id, customer_id, amount, currency, payment_method, card_type, card_last_four,
+    installments, transaction_id, notes, created_by
+  } = req.body;
+
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(order_id);
+    if (!order) {
+      return res.status(404).json({ error: 'Siparis bulunamadi' });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO odemeler (order_id, customer_id, amount, currency, payment_method, card_type, card_last_four,
+        installments, transaction_id, status, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+    `);
+    const result = stmt.run(order_id, customer_id, amount, currency || 'TRY', payment_method, card_type, card_last_four,
+      installments || 1, transaction_id, notes, created_by);
+
+    // Calculate total paid
+    const totalPaid = db.prepare('SELECT SUM(amount) as total FROM odemeler WHERE order_id = ? AND status = ?').get(order_id, 'completed');
+    const paidAmount = totalPaid?.total || 0;
+
+    // Update payment status
+    let paymentStatus = 'pending';
+    if (paidAmount >= order.total) {
+      paymentStatus = 'paid';
+    } else if (paidAmount > 0) {
+      paymentStatus = 'partial';
+    }
+
+    db.prepare('UPDATE siparisler SET payment_status = ? WHERE id = ?').run(paymentStatus, order_id);
+
+    logActivity(created_by, null, 'create', 'payment', result.lastInsertRowid, `${order.order_no} - ${amount} ${currency}`, null, req.body, 'Odeme eklendi', order.branch_id);
+
+    res.status(201).json({
+      message: 'Odeme basariyla kaydedildi',
+      paymentId: result.lastInsertRowid,
+      paymentStatus: paymentStatus,
+      totalPaid: paidAmount
+    });
+  } catch (error) {
+    console.error('Odeme kaydetme hatasi:', error);
+    res.status(500).json({ error: 'Odeme kaydedilemedi' });
+  }
+});
+
+// Siparis odemeleri
+app.get('/api/orders/:id/payments', (req, res) => {
+  const { id } = req.params;
+  try {
+    const payments = db.prepare(`
+      SELECT p.*, u.Ad_Soyad as created_by_name
+      FROM odemeler p
+      LEFT JOIN users u ON p.created_by = u.id
+      WHERE p.order_id = ?
+      ORDER BY p.payment_date DESC
+    `).all(id);
+
+    const order = db.prepare('SELECT total FROM siparisler WHERE id = ?').get(id);
+    const totalPaid = payments.reduce((sum, p) => sum + (p.status === 'completed' ? p.amount : 0), 0);
+
+    res.json({
+      payments,
+      orderTotal: order?.total || 0,
+      totalPaid,
+      remaining: (order?.total || 0) - totalPaid
+    });
+  } catch (error) {
+    console.error('Odeme listesi hatasi:', error);
+    res.status(500).json({ error: 'Odemeler getirilemedi' });
+  }
+});
+
+// Odeme iptal
+app.put('/api/payments/:id/cancel', (req, res) => {
+  const { id } = req.params;
+  const { cancelled_by, reason } = req.body;
+
+  try {
+    const payment = db.prepare('SELECT * FROM odemeler WHERE id = ?').get(id);
+    if (!payment) {
+      return res.status(404).json({ error: 'Odeme bulunamadi' });
+    }
+
+    db.prepare('UPDATE odemeler SET status = ?, notes = ? WHERE id = ?').run('cancelled', reason, id);
+
+    // Recalculate payment status
+    const totalPaid = db.prepare('SELECT SUM(amount) as total FROM odemeler WHERE order_id = ? AND status = ?').get(payment.order_id, 'completed');
+    const order = db.prepare('SELECT total FROM siparisler WHERE id = ?').get(payment.order_id);
+
+    let paymentStatus = 'pending';
+    if ((totalPaid?.total || 0) >= order.total) {
+      paymentStatus = 'paid';
+    } else if ((totalPaid?.total || 0) > 0) {
+      paymentStatus = 'partial';
+    }
+
+    db.prepare('UPDATE siparisler SET payment_status = ? WHERE id = ?').run(paymentStatus, payment.order_id);
+
+    logActivity(cancelled_by, null, 'cancel', 'payment', id, null, payment, { status: 'cancelled', reason }, 'Odeme iptal edildi', null);
+
+    res.json({ message: 'Odeme iptal edildi' });
+  } catch (error) {
+    console.error('Odeme iptal hatasi:', error);
+    res.status(500).json({ error: 'Odeme iptal edilemedi' });
+  }
+});
+
+// ==================== EXCHANGE RATES ====================
+
+// Kur oranlari
+app.get('/api/exchange-rates', (req, res) => {
+  try {
+    const rates = db.prepare('SELECT * FROM kur_oranlari ORDER BY currency_from').all();
+    res.json(rates);
+  } catch (error) {
+    console.error('Kur oranlari hatasi:', error);
+    res.status(500).json({ error: 'Kur oranlari getirilemedi' });
+  }
+});
+
+// Kur orani guncelle
+app.put('/api/exchange-rates/:id', (req, res) => {
+  const { id } = req.params;
+  const { rate, auto_update, updated_by } = req.body;
+
+  try {
+    const oldRate = db.prepare('SELECT * FROM kur_oranlari WHERE id = ?').get(id);
+    if (!oldRate) {
+      return res.status(404).json({ error: 'Kur orani bulunamadi' });
+    }
+
+    db.prepare('UPDATE kur_oranlari SET rate = ?, auto_update = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(rate, auto_update ? 1 : 0, id);
+
+    logActivity(updated_by, null, 'update', 'exchange_rate', id, `${oldRate.currency_from}/${oldRate.currency_to}`, { rate: oldRate.rate }, { rate }, 'Kur orani guncellendi', null);
+
+    res.json({ message: 'Kur orani guncellendi' });
+  } catch (error) {
+    console.error('Kur guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Kur orani guncellenemedi' });
+  }
+});
+
+// Yeni kur orani ekle
+app.post('/api/exchange-rates', (req, res) => {
+  const { currency_from, currency_to, rate, auto_update, created_by } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO kur_oranlari (currency_from, currency_to, rate, auto_update)
+      VALUES (?, ?, ?, ?)
+    `);
+    const result = stmt.run(currency_from, currency_to, rate, auto_update ? 1 : 0);
+
+    logActivity(created_by, null, 'create', 'exchange_rate', result.lastInsertRowid, `${currency_from}/${currency_to}`, null, req.body, 'Yeni kur orani eklendi', null);
+
+    res.status(201).json({
+      message: 'Kur orani eklendi',
+      rateId: result.lastInsertRowid
+    });
+  } catch (error) {
+    console.error('Kur ekleme hatasi:', error);
+    res.status(500).json({ error: 'Kur orani eklenemedi' });
+  }
+});
+
+// Para birimi donustur
+app.get('/api/exchange-rates/convert', (req, res) => {
+  const { amount, from, to } = req.query;
+
+  try {
+    if (from === to) {
+      return res.json({ amount: parseFloat(amount), converted: parseFloat(amount), rate: 1 });
+    }
+
+    const rate = db.prepare('SELECT rate FROM kur_oranlari WHERE currency_from = ? AND currency_to = ?').get(from, to);
+
+    if (!rate) {
+      // Try reverse conversion
+      const reverseRate = db.prepare('SELECT rate FROM kur_oranlari WHERE currency_from = ? AND currency_to = ?').get(to, from);
+      if (reverseRate) {
+        const converted = parseFloat(amount) / reverseRate.rate;
+        return res.json({ amount: parseFloat(amount), converted, rate: 1 / reverseRate.rate });
+      }
+      return res.status(404).json({ error: 'Kur orani bulunamadi' });
+    }
+
+    const converted = parseFloat(amount) * rate.rate;
+    res.json({ amount: parseFloat(amount), converted, rate: rate.rate });
+  } catch (error) {
+    console.error('Kur donusturme hatasi:', error);
+    res.status(500).json({ error: 'Donusturulemedi' });
+  }
+});
+
+// ==================== ACTIVITY LOGS ====================
+
+// Islem kayitlari
+app.get('/api/activity-logs', (req, res) => {
+  const { user_id, entity_type, entity_id, branch_id, from_date, to_date, limit = 100 } = req.query;
+
+  try {
+    let query = `
+      SELECT il.*, u.Ad_Soyad as user_name_display
+      FROM islem_kayitlari il
+      LEFT JOIN users u ON il.user_id = u.id
+      WHERE 1=1
+    `;
+    let params = [];
+
+    if (user_id) {
+      query += ' AND il.user_id = ?';
+      params.push(user_id);
+    }
+
+    if (entity_type) {
+      query += ' AND il.entity_type = ?';
+      params.push(entity_type);
+    }
+
+    if (entity_id) {
+      query += ' AND il.entity_id = ?';
+      params.push(entity_id);
+    }
+
+    if (branch_id) {
+      query += ' AND il.branch_id = ?';
+      params.push(branch_id);
+    }
+
+    if (from_date) {
+      query += ' AND il.created_at >= ?';
+      params.push(from_date);
+    }
+
+    if (to_date) {
+      query += ' AND il.created_at <= ?';
+      params.push(to_date);
+    }
+
+    query += ` ORDER BY il.created_at DESC LIMIT ?`;
+    params.push(parseInt(limit));
+
+    const logs = db.prepare(query).all(...params);
+    res.json(logs);
+  } catch (error) {
+    console.error('Islem kayitlari hatasi:', error);
+    res.status(500).json({ error: 'Islem kayitlari getirilemedi' });
+  }
+});
+
+// Son islemler
+app.get('/api/activity-logs/recent', (req, res) => {
+  const { limit = 50 } = req.query;
+
+  try {
+    const logs = db.prepare(`
+      SELECT il.*, u.Ad_Soyad as user_name_display
+      FROM islem_kayitlari il
+      LEFT JOIN users u ON il.user_id = u.id
+      ORDER BY il.created_at DESC
+      LIMIT ?
+    `).all(parseInt(limit));
+
+    res.json(logs);
+  } catch (error) {
+    console.error('Son islemler hatasi:', error);
+    res.status(500).json({ error: 'Son islemler getirilemedi' });
+  }
+});
+
+// ==================== NOTIFICATIONS ====================
+
+// Bildirimler
+app.get('/api/notifications', (req, res) => {
+  const { user_id, is_read } = req.query;
+
+  try {
+    let query = 'SELECT * FROM bildirimler WHERE 1=1';
+    let params = [];
+
+    if (user_id) {
+      query += ' AND (user_id = ? OR user_id IS NULL)';
+      params.push(user_id);
+    }
+
+    if (is_read !== undefined) {
+      query += ' AND is_read = ?';
+      params.push(is_read === 'true' ? 1 : 0);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT 100';
+
+    const notifications = db.prepare(query).all(...params);
+    res.json(notifications);
+  } catch (error) {
+    console.error('Bildirimler hatasi:', error);
+    res.status(500).json({ error: 'Bildirimler getirilemedi' });
+  }
+});
+
+// Bildirimi okundu olarak isaretle
+app.put('/api/notifications/:id/read', (req, res) => {
+  const { id } = req.params;
+
+  try {
+    db.prepare('UPDATE bildirimler SET is_read = 1 WHERE id = ?').run(id);
+    res.json({ message: 'Bildirim okundu olarak isaretlendi' });
+  } catch (error) {
+    console.error('Bildirim guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Bildirim guncellenemedi' });
+  }
+});
+
+// Tum bildirimleri okundu olarak isaretle
+app.put('/api/notifications/read-all', (req, res) => {
+  const { user_id } = req.body;
+
+  try {
+    let query = 'UPDATE bildirimler SET is_read = 1';
+    let params = [];
+
+    if (user_id) {
+      query += ' WHERE user_id = ? OR user_id IS NULL';
+      params.push(user_id);
+    }
+
+    db.prepare(query).run(...params);
+    res.json({ message: 'Tum bildirimler okundu' });
+  } catch (error) {
+    console.error('Bildirimler guncelleme hatasi:', error);
+    res.status(500).json({ error: 'Bildirimler guncellenemedi' });
+  }
+});
+
+// ==================== ANALYTICS ====================
 
 // Dashboard istatistikleri
 app.get('/api/analytics/dashboard', (req, res) => {
+  const { branch_id } = req.query;
+
   try {
-    const orders = db.prepare('SELECT * FROM siparisler').all();
+    let orderQuery = 'SELECT * FROM siparisler';
+    let params = [];
+
+    if (branch_id) {
+      orderQuery += ' WHERE branch_id = ?';
+      params.push(branch_id);
+    }
+
+    const orders = db.prepare(orderQuery).all(...params);
     const customers = db.prepare('SELECT COUNT(*) as count FROM musteriler').get();
     const products = db.prepare('SELECT COUNT(*) as count FROM urunler').get();
 
@@ -613,6 +2053,12 @@ app.get('/api/analytics/dashboard', (req, res) => {
       transfer: 0,
       delivered: 0,
       cancelled: 0
+    };
+
+    const paymentCounts = {
+      paid: 0,
+      partial: 0,
+      pending: 0
     };
 
     orders.forEach(order => {
@@ -646,6 +2092,12 @@ app.get('/api/analytics/dashboard', (req, res) => {
         case 'Teslim Edildi': statusCounts.delivered++; break;
         case 'İptal Edildi': statusCounts.cancelled++; break;
       }
+
+      switch(order.payment_status) {
+        case 'paid': paymentCounts.paid++; break;
+        case 'partial': paymentCounts.partial++; break;
+        case 'pending': paymentCounts.pending++; break;
+      }
     });
 
     res.json({
@@ -653,6 +2105,7 @@ app.get('/api/analytics/dashboard', (req, res) => {
       totalCustomers: customers.count,
       totalProducts: products.count,
       statusCounts,
+      paymentCounts,
       monthly: {
         revenue: monthlyRevenue,
         expenses: monthlyExpenses,
@@ -674,8 +2127,20 @@ app.get('/api/analytics/dashboard', (req, res) => {
 
 // Aylik gelir/gider trend
 app.get('/api/analytics/monthly-trends', (req, res) => {
+  const { branch_id } = req.query;
+
   try {
-    const orders = db.prepare('SELECT * FROM siparisler ORDER BY date ASC').all();
+    let query = 'SELECT * FROM siparisler';
+    let params = [];
+
+    if (branch_id) {
+      query += ' WHERE branch_id = ?';
+      params.push(branch_id);
+    }
+
+    query += ' ORDER BY date ASC';
+
+    const orders = db.prepare(query).all(...params);
     const monthlyData = {};
 
     orders.forEach(order => {
@@ -715,7 +2180,7 @@ app.get('/api/analytics/orders-by-country', (req, res) => {
   try {
     const orders = db.prepare(`
       SELECT customer_country, COUNT(*) as order_count,
-             SUM(CAST(json_extract(products, '$[0].price') AS REAL) * CAST(json_extract(products, '$[0].quantity') AS INTEGER)) as total_revenue
+             SUM(total) as total_revenue
       FROM siparisler
       WHERE customer_country IS NOT NULL AND customer_country != ''
       GROUP BY customer_country
@@ -740,12 +2205,14 @@ app.get('/api/analytics/top-products', (req, res) => {
       products.forEach(product => {
         const name = product.name || 'Bilinmeyen';
         if (!productStats[name]) {
-          productStats[name] = { quantity: 0, revenue: 0 };
+          productStats[name] = { quantity: 0, revenue: 0, sqm: 0 };
         }
         const qty = parseInt(product.quantity) || 0;
         const price = parseFloat(product.price) || 0;
+        const sqm = parseFloat(product.sqm) || 0;
         productStats[name].quantity += qty;
         productStats[name].revenue += qty * price;
+        productStats[name].sqm += qty * sqm;
       });
     });
 
@@ -764,83 +2231,137 @@ app.get('/api/analytics/top-products', (req, res) => {
 // En iyi musteriler
 app.get('/api/analytics/top-customers', (req, res) => {
   try {
-    const orders = db.prepare(`
-      SELECT customer_name, customer_country, COUNT(*) as order_count,
-             customer_email, customer_phone
-      FROM siparisler
-      WHERE customer_name IS NOT NULL AND customer_name != ''
-      GROUP BY customer_name
-      ORDER BY order_count DESC
+    const customers = db.prepare(`
+      SELECT m.*,
+             (SELECT COUNT(*) FROM siparisler WHERE customer_id = m.id) as order_count,
+             (SELECT SUM(total) FROM siparisler WHERE customer_id = m.id) as total_revenue
+      FROM musteriler m
+      ORDER BY total_revenue DESC
       LIMIT 10
     `).all();
 
-    res.json(orders);
+    res.json(customers);
   } catch (error) {
     console.error('Top customers hatasi:', error);
     res.status(500).json({ error: 'En iyi musteriler getirilemedi' });
   }
 });
 
-// Siparis tek detay getirme
-app.get('/api/orders/:id', (req, res) => {
+// Sube bazli performans
+app.get('/api/analytics/branch-performance', (req, res) => {
+  try {
+    const branches = db.prepare(`
+      SELECT s.*,
+             (SELECT COUNT(*) FROM siparisler WHERE branch_id = s.id) as order_count,
+             (SELECT SUM(total) FROM siparisler WHERE branch_id = s.id) as total_revenue,
+             (SELECT COUNT(*) FROM users WHERE branch_id = s.id) as user_count
+      FROM subeler s
+      WHERE s.is_active = 1
+      ORDER BY total_revenue DESC
+    `).all();
+
+    res.json(branches);
+  } catch (error) {
+    console.error('Branch performance hatasi:', error);
+    res.status(500).json({ error: 'Sube performansi getirilemedi' });
+  }
+});
+
+// ==================== SHIPPING HISTORY ====================
+
+// Sevkiyat gecmisi
+app.get('/api/orders/:id/shipping-history', (req, res) => {
   const { id } = req.params;
+  try {
+    const history = db.prepare(`
+      SELECT sh.*, u.Ad_Soyad as updated_by_name
+      FROM sevkiyat_gecmisi sh
+      LEFT JOIN users u ON sh.updated_by = u.id
+      WHERE sh.order_id = ?
+      ORDER BY sh.created_at DESC
+    `).all(id);
+    res.json(history);
+  } catch (error) {
+    console.error('Sevkiyat gecmisi hatasi:', error);
+    res.status(500).json({ error: 'Sevkiyat gecmisi getirilemedi' });
+  }
+});
+
+// Sevkiyat notu ekle
+app.post('/api/orders/:id/shipping-history', (req, res) => {
+  const { id } = req.params;
+  const { status, location, notes, updated_by } = req.body;
+
   try {
     const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(id);
     if (!order) {
       return res.status(404).json({ error: 'Siparis bulunamadi' });
     }
-    res.json(order);
+
+    const stmt = db.prepare(`
+      INSERT INTO sevkiyat_gecmisi (order_id, status, location, notes, updated_by)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(id, status, location, notes, updated_by);
+
+    res.status(201).json({
+      message: 'Sevkiyat notu eklendi',
+      historyId: result.lastInsertRowid
+    });
   } catch (error) {
-    console.error('Siparis detay hatasi:', error);
-    res.status(500).json({ error: 'Siparis getirilemedi' });
+    console.error('Sevkiyat notu ekleme hatasi:', error);
+    res.status(500).json({ error: 'Sevkiyat notu eklenemedi' });
   }
 });
 
-// Siparis guncelle
-app.put('/api/orders/:id', (req, res) => {
-  const { id } = req.params;
-  const { customer_name, customer_address, customer_country, customer_city,
-          customer_phone, customer_email, salesman, agency, guide,
-          cargo_company, cargo_tracking } = req.body;
+// ==================== PHONE FORMAT HELPER ====================
 
+app.get('/api/utils/format-phone', (req, res) => {
+  const { phone, country_code } = req.query;
   try {
-    const result = db.prepare(`
-      UPDATE siparisler SET
-        customer_name=?, customer_address=?, customer_country=?, customer_city=?,
-        customer_phone=?, customer_email=?, salesman=?, agency=?, guide=?,
-        cargo_company=?, cargo_tracking=?
-      WHERE id=?
-    `).run(customer_name, customer_address, customer_country, customer_city,
-           customer_phone, customer_email, salesman, agency, guide,
-           cargo_company, cargo_tracking, id);
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Siparis bulunamadi' });
-    }
-
-    res.json({ message: 'Siparis guncellendi', orderId: id });
+    const formatted = formatPhoneNumber(phone, country_code || '+90');
+    res.json({ formatted, full: `${country_code || '+90'} ${formatted}` });
   } catch (error) {
-    console.error('Siparis guncelleme hatasi:', error);
-    res.status(500).json({ error: 'Siparis guncellenemedi' });
+    res.status(500).json({ error: 'Formatlama hatasi' });
   }
 });
 
-// Siparis sil
-app.delete('/api/orders/:id', (req, res) => {
-  const { id } = req.params;
+// Country codes listesi
+app.get('/api/utils/country-codes', (req, res) => {
+  const countryCodes = [
+    { code: '+90', country: 'Türkiye', flag: '🇹🇷', format: 'XXX XXX XX XX' },
+    { code: '+1', country: 'ABD/Kanada', flag: '🇺🇸', format: '(XXX) XXX-XXXX' },
+    { code: '+44', country: 'Birleşik Krallık', flag: '🇬🇧', format: 'XXXX XXXXXX' },
+    { code: '+49', country: 'Almanya', flag: '🇩🇪', format: 'XXX XXXXXXXX' },
+    { code: '+33', country: 'Fransa', flag: '🇫🇷', format: 'X XX XX XX XX' },
+    { code: '+39', country: 'İtalya', flag: '🇮🇹', format: 'XXX XXX XXXX' },
+    { code: '+34', country: 'İspanya', flag: '🇪🇸', format: 'XXX XX XX XX' },
+    { code: '+31', country: 'Hollanda', flag: '🇳🇱', format: 'XX XXX XXXX' },
+    { code: '+32', country: 'Belçika', flag: '🇧🇪', format: 'XXX XX XX XX' },
+    { code: '+41', country: 'İsviçre', flag: '🇨🇭', format: 'XX XXX XX XX' },
+    { code: '+43', country: 'Avusturya', flag: '🇦🇹', format: 'XXX XXXXXXX' },
+    { code: '+46', country: 'İsveç', flag: '🇸🇪', format: 'XX XXX XX XX' },
+    { code: '+47', country: 'Norveç', flag: '🇳🇴', format: 'XXX XX XXX' },
+    { code: '+45', country: 'Danimarka', flag: '🇩🇰', format: 'XX XX XX XX' },
+    { code: '+358', country: 'Finlandiya', flag: '🇫🇮', format: 'XX XXX XXXX' },
+    { code: '+48', country: 'Polonya', flag: '🇵🇱', format: 'XXX XXX XXX' },
+    { code: '+420', country: 'Çekya', flag: '🇨🇿', format: 'XXX XXX XXX' },
+    { code: '+36', country: 'Macaristan', flag: '🇭🇺', format: 'XX XXX XXXX' },
+    { code: '+30', country: 'Yunanistan', flag: '🇬🇷', format: 'XXX XXX XXXX' },
+    { code: '+7', country: 'Rusya', flag: '🇷🇺', format: 'XXX XXX XX XX' },
+    { code: '+81', country: 'Japonya', flag: '🇯🇵', format: 'XX XXXX XXXX' },
+    { code: '+86', country: 'Çin', flag: '🇨🇳', format: 'XXX XXXX XXXX' },
+    { code: '+82', country: 'Güney Kore', flag: '🇰🇷', format: 'XX XXXX XXXX' },
+    { code: '+91', country: 'Hindistan', flag: '🇮🇳', format: 'XXXXX XXXXX' },
+    { code: '+971', country: 'BAE', flag: '🇦🇪', format: 'XX XXX XXXX' },
+    { code: '+966', country: 'Suudi Arabistan', flag: '🇸🇦', format: 'XX XXX XXXX' },
+    { code: '+972', country: 'İsrail', flag: '🇮🇱', format: 'XX XXX XXXX' },
+    { code: '+61', country: 'Avustralya', flag: '🇦🇺', format: 'XXX XXX XXX' },
+    { code: '+55', country: 'Brezilya', flag: '🇧🇷', format: 'XX XXXXX XXXX' },
+    { code: '+52', country: 'Meksika', flag: '🇲🇽', format: 'XX XXXX XXXX' }
+  ];
 
-  try {
-    const result = db.prepare('DELETE FROM siparisler WHERE id = ?').run(id);
-
-    if (result.changes === 0) {
-      return res.status(404).json({ error: 'Siparis bulunamadi' });
-    }
-
-    res.json({ message: 'Siparis silindi' });
-  } catch (error) {
-    console.error('Siparis silme hatasi:', error);
-    res.status(500).json({ error: 'Siparis silinemedi' });
-  }
+  res.json(countryCodes);
 });
 
 // Server'i baslat
@@ -858,11 +2379,16 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  http://localhost:${PORT}/api/users`);
   console.log(`  http://localhost:${PORT}/api/customers`);
   console.log(`  http://localhost:${PORT}/api/products`);
+  console.log(`  http://localhost:${PORT}/api/branches`);
+  console.log(`  http://localhost:${PORT}/api/payments`);
+  console.log(`  http://localhost:${PORT}/api/exchange-rates`);
+  console.log(`  http://localhost:${PORT}/api/activity-logs`);
+  console.log(`  http://localhost:${PORT}/api/notifications`);
   console.log(`  http://localhost:${PORT}/api/analytics/dashboard`);
-  console.log(`  http://localhost:${PORT}/api/analytics/monthly-trends`);
   console.log('');
   console.log('Demo Giris Bilgileri:');
   console.log('  Patron: admin@test.com / 123456');
   console.log('  User:   test@test.com / 123456');
+  console.log('  Depo:   depo@test.com / 123456');
   console.log('');
 });
