@@ -39,6 +39,16 @@ interface RecentOrder {
   products: string;
 }
 
+interface Activity {
+  id: number;
+  action_type: string;
+  entity_type: string;
+  entity_name: string;
+  description: string;
+  user_name: string;
+  created_at: string;
+}
+
 interface HomeScreenProps {
   onTabChange: (index: number) => void;
   userName: string;
@@ -60,6 +70,9 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
   });
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [showFinancials, setShowFinancials] = useState(false);
+  const [showActivities, setShowActivities] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -169,6 +182,67 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
   const onRefresh = () => {
     setRefreshing(true);
     fetchOrderStats();
+  };
+
+  const fetchActivities = async () => {
+    setActivitiesLoading(true);
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.activityLogs);
+      const data = await response.json();
+      setActivities(data.slice(0, 20)); // Son 20 aktivite
+    } catch (error) {
+      console.error('Aktiviteler alınamadı:', error);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  const openActivities = () => {
+    setShowActivities(true);
+    fetchActivities();
+  };
+
+  const getActivityIcon = (actionType: string, entityType: string) => {
+    if (entityType === 'order') {
+      if (actionType === 'create') return 'cart-plus';
+      if (actionType === 'update') return 'cart-arrow-down';
+      if (actionType === 'delete') return 'cart-remove';
+    }
+    if (entityType === 'user') {
+      if (actionType === 'login') return 'login';
+      if (actionType === 'logout') return 'logout';
+      if (actionType === 'create') return 'account-plus';
+    }
+    if (entityType === 'payment') return 'cash-multiple';
+    if (entityType === 'branch') return 'store';
+    if (entityType === 'product') return 'package-variant';
+    return 'information-outline';
+  };
+
+  const getActivityColor = (actionType: string) => {
+    switch (actionType) {
+      case 'create': return COLORS.success.main;
+      case 'update': return COLORS.info.main;
+      case 'delete': return COLORS.error.main;
+      case 'login': return COLORS.secondary.teal;
+      case 'logout': return COLORS.warning.main;
+      default: return COLORS.neutral[500];
+    }
+  };
+
+  const formatActivityTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Şimdi';
+    if (diffMins < 60) return `${diffMins} dk önce`;
+    if (diffHours < 24) return `${diffHours} saat önce`;
+    if (diffDays < 7) return `${diffDays} gün önce`;
+    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
   };
 
   const formatCurrency = (amount: number) => {
@@ -312,9 +386,9 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
             <ThemedText style={styles.userName}>{userName || 'Kullanıcı'}</ThemedText>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notificationButton}>
+            <TouchableOpacity style={styles.notificationButton} onPress={openActivities}>
               <IconSymbol name="bell-outline" size={22} color={COLORS.light.text.secondary} />
-              <View style={styles.notificationBadge} />
+              {activities.length > 0 && <View style={styles.notificationBadge} />}
             </TouchableOpacity>
             <View style={styles.roleTag}>
               <LinearGradient
@@ -625,6 +699,70 @@ export default function HomeScreen({ onTabChange, userName, userRole, permission
                 </View>
               </LinearGradient>
             </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Activities Modal */}
+      <Modal
+        visible={showActivities}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowActivities(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowActivities(false)}
+            >
+              <IconSymbol name="close" size={24} color={COLORS.light.text.primary} />
+            </TouchableOpacity>
+            <ThemedText style={styles.modalTitle}>Son Aktiviteler</ThemedText>
+            <TouchableOpacity
+              style={styles.refreshActivitiesBtn}
+              onPress={fetchActivities}
+            >
+              <IconSymbol name="refresh" size={20} color={COLORS.primary.accent} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent} contentContainerStyle={styles.activityScrollContent}>
+            {activitiesLoading ? (
+              <View style={styles.activityLoading}>
+                <ThemedText style={styles.activityLoadingText}>Yükleniyor...</ThemedText>
+              </View>
+            ) : activities.length === 0 ? (
+              <View style={styles.activityEmpty}>
+                <IconSymbol name="bell-off-outline" size={48} color={COLORS.neutral[300]} />
+                <ThemedText style={styles.activityEmptyText}>Henüz aktivite yok</ThemedText>
+              </View>
+            ) : (
+              activities.map((activity, index) => (
+                <View key={activity.id || index} style={styles.activityItem}>
+                  <View style={[styles.activityIcon, { backgroundColor: getActivityColor(activity.action_type) + '20' }]}>
+                    <IconSymbol
+                      name={getActivityIcon(activity.action_type, activity.entity_type)}
+                      size={20}
+                      color={getActivityColor(activity.action_type)}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <ThemedText style={styles.activityTitle} numberOfLines={2}>
+                      {activity.description || `${activity.entity_type} ${activity.action_type}`}
+                    </ThemedText>
+                    <View style={styles.activityMeta}>
+                      {activity.user_name && (
+                        <ThemedText style={styles.activityUser}>{activity.user_name}</ThemedText>
+                      )}
+                      <ThemedText style={styles.activityTime}>
+                        {formatActivityTime(activity.created_at)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                </View>
+              ))
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -1100,5 +1238,82 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.xl,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: '#fff',
+  },
+
+  // Activity Styles
+  refreshActivitiesBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activityScrollContent: {
+    padding: SPACING.base,
+    gap: SPACING.sm,
+  },
+  activityLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: SPACING['4xl'],
+  },
+  activityLoadingText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.neutral[500],
+    marginTop: SPACING.md,
+  },
+  activityEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: SPACING['4xl'],
+  },
+  activityEmptyText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.neutral[400],
+    marginTop: SPACING.md,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.light.surface,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.light.border,
+  },
+  activityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityTitle: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.primary,
+    marginBottom: SPACING.xs,
+    lineHeight: 18,
+  },
+  activityMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  activityUser: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.primary.accent,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  activityTime: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.neutral[400],
   },
 });
