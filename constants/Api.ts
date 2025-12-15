@@ -5,6 +5,13 @@ import { Platform } from 'react-native';
 // iOS Simulator uses localhost directly
 // For physical devices, use your computer's local IP address
 
+// ÖNEMLİ: Fiziksel cihazda test için bilgisayarınızın yerel IP adresini girin
+// Örnek: const PHYSICAL_DEVICE_IP = '192.168.1.100';
+const PHYSICAL_DEVICE_IP = '192.168.1.100'; // Değiştirin!
+
+// Production URL - Deploy ettikten sonra buraya gerçek URL'yi girin
+const PRODUCTION_URL = 'https://your-app.onrender.com'; // Değiştirin!
+
 const getBaseUrl = (): string => {
   // For development, detect platform
   if (__DEV__) {
@@ -20,8 +27,13 @@ const getBaseUrl = (): string => {
     }
   }
 
-  // Production URL (update this when deploying)
-  return 'http://localhost:3000';
+  // Production URL
+  return PRODUCTION_URL;
+};
+
+// Fiziksel cihaz için IP tabanlı URL al
+export const getPhysicalDeviceUrl = (): string => {
+  return `http://${PHYSICAL_DEVICE_IP}:3000`;
 };
 
 export const API_BASE_URL = getBaseUrl();
@@ -50,12 +62,24 @@ export const API_ENDPOINTS = {
   notifications: `${API_BASE_URL}/api/notifications`,
   // Utils
   countryCodes: `${API_BASE_URL}/api/utils/country-codes`,
+  health: `${API_BASE_URL}/api/health`,
   // Analytics
   analyticsDashboard: `${API_BASE_URL}/api/analytics/dashboard`,
   analyticsMonthlyTrends: `${API_BASE_URL}/api/analytics/monthly-trends`,
   analyticsOrdersByCountry: `${API_BASE_URL}/api/analytics/orders-by-country`,
   analyticsTopProducts: `${API_BASE_URL}/api/analytics/top-products`,
   analyticsTopCustomers: `${API_BASE_URL}/api/analytics/top-customers`,
+  // Barcode & Search
+  productByBarcode: (barcode: string) => `${API_BASE_URL}/api/products/barcode/${barcode}`,
+  searchByBarcode: `${API_BASE_URL}/api/products/search/barcode`,
+  searchBySku: `${API_BASE_URL}/api/products/search/sku`,
+  // File Upload
+  uploadPassport: `${API_BASE_URL}/api/upload/passport`,
+  uploadSignature: `${API_BASE_URL}/api/upload/signature`,
+  uploadDocument: `${API_BASE_URL}/api/upload/document`,
+  // Order Updates
+  orderPassport: (orderId: number) => `${API_BASE_URL}/api/orders/${orderId}/passport`,
+  orderSignature: (orderId: number) => `${API_BASE_URL}/api/orders/${orderId}/signature`,
 };
 
 // Fetch with timeout wrapper

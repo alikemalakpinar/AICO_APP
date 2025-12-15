@@ -1,21 +1,34 @@
 {
   "expo": {
-    "name": "koyuncuhali",
-    "slug": "koyuncuhali",
+    "name": "AICO Halı Takip",
+    "slug": "aico-hali-takip",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "aico",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aico.halitakip",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Barkod tarama ve pasaport fotoğrafı çekmek için kamera erişimi gereklidir.",
+        "NSPhotoLibraryUsageDescription": "Belgelerinizi yüklemek için galeri erişimi gereklidir.",
+        "NSMicrophoneUsageDescription": "Video kaydı için mikrofon erişimi gereklidir."
+      }
     },
     "android": {
+      "package": "com.aico.halitakip",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -32,10 +45,28 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Barkod tarama ve pasaport fotoğrafı çekmek için kamera erişimi gereklidir."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Belgelerinizi yüklemek için fotoğraf erişimi gereklidir.",
+          "cameraPermission": "Pasaport fotoğrafı çekmek için kamera erişimi gereklidir."
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "aico-hali-takip"
+      }
     }
   }
 }
