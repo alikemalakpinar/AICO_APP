@@ -237,11 +237,11 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
 
   // Kullanıcı zaten bir şubeyle giriş yaptıysa otomatik şube seçimi yap
   useEffect(() => {
-    if (userBranchId && userBranchName && !isAdminRole) {
+    if (userBranchId && !isAdminRole) {
       setFormData(prev => ({
         ...prev,
         branchId: userBranchId,
-        branchName: userBranchName
+        branchName: userBranchName || ''
       }));
     }
   }, [userBranchId, userBranchName, isAdminRole]);
@@ -416,7 +416,9 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
   // Sonraki adıma geç
   const nextStep = () => {
     // Step 1 validasyonu - şube seçilmiş olmalı
-    if (currentStep === 1 && !formData.branchId) {
+    // Satış kullanıcıları için userBranchId zaten var ise validasyonu atla
+    const hasBranch = formData.branchId || (userBranchId && !isAdminRole);
+    if (currentStep === 1 && !hasBranch) {
       Alert.alert('Uyarı', 'Lütfen devam etmeden önce bir şube seçin.');
       return;
     }
@@ -438,8 +440,14 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
   // Siparişi gönder
   const handleSubmit = async () => {
     try {
+      // Satış kullanıcıları için branchId'yi userBranchId'den al
+      const finalBranchId = formData.branchId || userBranchId;
+      const finalBranchName = formData.branchName || userBranchName || '';
+
       const orderData = {
         ...formData,
+        branchId: finalBranchId,
+        branchName: finalBranchName,
         total: calculateTotal(),
         currency: selectedCurrency,
         passportImage,
@@ -466,11 +474,15 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
 
   const resetForm = () => {
     setCurrentStep(1);
+    // Satış kullanıcıları için şube bilgisini koru
+    const preservedBranchId = userBranchId && !isAdminRole ? userBranchId : null;
+    const preservedBranchName = userBranchId && !isAdminRole ? (userBranchName || '') : '';
+
     setFormData({
       date: new Date().toISOString().split('T')[0],
       orderNo: `ORD-${Date.now().toString().slice(-6)}`,
-      branchId: null,
-      branchName: '',
+      branchId: preservedBranchId,
+      branchName: preservedBranchName,
       shipping: { salesman: '', conference: '', cruise: '', agency: '', guide: '', pax: '' },
       products: [{ id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '' }],
       paymentMethod: '',
@@ -557,8 +569,8 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
           <ActivityIndicator size="small" color={COLORS.primary.accent} />
         ) : (
           <View style={styles.exchangeList}>
-            {exchangeRates.map(rate => (
-              <View key={rate.currency} style={styles.exchangeItem}>
+            {exchangeRates.map((rate, index) => (
+              <View key={`${rate.currency}-${index}`} style={styles.exchangeItem}>
                 <ThemedText style={styles.exchangeCurrency}>{rate.currency}</ThemedText>
                 <ThemedText style={styles.exchangeRate}>{rate.rate.toFixed(2)}</ThemedText>
               </View>
@@ -924,8 +936,8 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
           />
         </View>
         <View style={styles.stepsIndicator}>
-          {STEPS.map((step, index) => (
-            <View key={step.id} style={styles.stepDot}>
+          {STEPS.map((step) => (
+            <View key={`step-${step.id}`} style={styles.stepDot}>
               <View style={[
                 styles.dot,
                 currentStep >= step.id && styles.dotActive,
