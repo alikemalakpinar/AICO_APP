@@ -8,12 +8,17 @@ import {
   Alert,
   RefreshControl,
   Switch,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import ThemedText from '../ThemedText';
 import IconSymbol from '../ui/IconSymbol';
-import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '../../../constants/Theme';
-import { API_ENDPOINTS, fetchWithTimeout, API_URL } from '../../../constants/Api';
+import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
+import { API_ENDPOINTS, fetchWithTimeout, API_BASE_URL } from '../../../constants/Api';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface Product {
   id: number;
@@ -85,6 +90,9 @@ export default function ProductsScreen({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'dimensions'>('basic');
   const [autoCalculateUSD, setAutoCalculateUSD] = useState(true);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -164,7 +172,7 @@ export default function ProductsScreen({
 
   const fetchExchangeRates = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/exchange-rates`);
+      const response = await fetch(`${API_BASE_URL}/api/exchange-rates`);
       const data = await response.json();
       setExchangeRates(data);
     } catch (error) {
@@ -321,6 +329,72 @@ export default function ProductsScreen({
   const formatPrice = (price: number, currency: string = 'USD') => {
     const symbols: { [key: string]: string } = { TRY: '₺', USD: '$', EUR: '€' };
     return `${symbols[currency] || currency} ${price.toLocaleString('tr-TR', { minimumFractionDigits: 0 })}`;
+  };
+
+  // Barkod tarama sonucu isleme
+  const handleBarCodeScanned = async (result: BarcodeScanningResult) => {
+    if (scanned) return;
+    setScanned(true);
+
+    const { data: barcodeData } = result;
+
+    // Barkod ile veritabaninda urun ara
+    try {
+      const response = await fetchWithTimeout(`${API_ENDPOINTS.products}?barcode=${barcodeData}`);
+      const existingProducts = await response.json();
+
+      if (existingProducts && existingProducts.length > 0) {
+        // Mevcut urun bulundu - bilgileri doldur
+        const product = existingProducts[0];
+        setFormData({
+          name: product.name || '',
+          sku: product.sku || '',
+          barcode: barcodeData,
+          category: product.category || '',
+          default_price: product.default_price?.toString() || '',
+          default_cost: product.default_cost?.toString() || '',
+          price_local: product.price_local?.toString() || product.default_price?.toString() || '',
+          price_usd: product.price_usd?.toString() || '',
+          currency: product.currency || 'TRY',
+          width: product.width?.toString() || '',
+          height: product.height?.toString() || '',
+          unit_type: product.unit_type || 'piece',
+          sizes: product.sizes || '',
+          description: product.description || '',
+          in_stock: product.in_stock === 1,
+          stock_quantity: product.stock_quantity?.toString() || '0',
+          min_stock_alert: product.min_stock_alert?.toString() || '5',
+        });
+        Alert.alert('Urun Bulundu', `"${product.name}" urunu bilgileri yuklendi.`);
+      } else {
+        // Yeni barkod - sadece barkod alanini doldur
+        setFormData(prev => ({ ...prev, barcode: barcodeData }));
+        Alert.alert('Yeni Barkod', 'Bu barkod sistemde kayitli degil. Yeni urun olarak ekleyebilirsiniz.');
+      }
+    } catch (error) {
+      // API hatasi durumunda sadece barkod doldur
+      setFormData(prev => ({ ...prev, barcode: barcodeData }));
+    }
+
+    setShowBarcodeScanner(false);
+    setTimeout(() => setScanned(false), 1000);
+  };
+
+  // Barkod tarayici modal'i ac
+  const openBarcodeScanner = async () => {
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert(
+          'Kamera Izni Gerekli',
+          'Barkod taramak icin kamera erisim izni vermeniz gerekiyor.',
+          [{ text: 'Tamam' }]
+        );
+        return;
+      }
+    }
+    setScanned(false);
+    setShowBarcodeScanner(true);
   };
 
   const renderProductCard = (product: Product) => {
@@ -563,14 +637,22 @@ export default function ProductsScreen({
                 </View>
                 <View style={[styles.inputGroup, { flex: 1, marginLeft: SPACING.sm }]}>
                   <ThemedText style={styles.inputLabel}>Barkod</ThemedText>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.barcode}
-                    onChangeText={(text) => setFormData({ ...formData, barcode: text })}
-                    placeholder="8690001000001"
-                    placeholderTextColor={COLORS.neutral[400]}
-                    keyboardType="number-pad"
-                  />
+                  <View style={styles.barcodeInputRow}>
+                    <TextInput
+                      style={[styles.input, styles.barcodeInput]}
+                      value={formData.barcode}
+                      onChangeText={(text) => setFormData({ ...formData, barcode: text })}
+                      placeholder="8690001000001"
+                      placeholderTextColor={COLORS.neutral[400]}
+                      keyboardType="number-pad"
+                    />
+                    <TouchableOpacity
+                      style={styles.scanButton}
+                      onPress={openBarcodeScanner}
+                    >
+                      <IconSymbol name="barcode-scan" size={22} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
@@ -911,6 +993,54 @@ export default function ProductsScreen({
       </ScrollView>
 
       {renderAddModal()}
+
+      {/* Barkod Tarayici Modal */}
+      <Modal
+        visible={showBarcodeScanner}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowBarcodeScanner(false)}
+      >
+        <View style={styles.scannerContainer}>
+          <View style={styles.scannerHeader}>
+            <TouchableOpacity
+              style={styles.scannerCloseButton}
+              onPress={() => setShowBarcodeScanner(false)}
+            >
+              <IconSymbol name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <ThemedText style={styles.scannerTitle}>Barkod Tara</ThemedText>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'qr'],
+            }}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          >
+            <View style={styles.scannerOverlay}>
+              <View style={styles.scannerFrame}>
+                <View style={[styles.scannerCorner, styles.topLeft]} />
+                <View style={[styles.scannerCorner, styles.topRight]} />
+                <View style={[styles.scannerCorner, styles.bottomLeft]} />
+                <View style={[styles.scannerCorner, styles.bottomRight]} />
+              </View>
+              <ThemedText style={styles.scannerHint}>
+                Barkodu cerceve icine hizalayin
+              </ThemedText>
+            </View>
+          </CameraView>
+
+          <View style={styles.scannerFooter}>
+            <ThemedText style={styles.scannerFooterText}>
+              EAN-13, EAN-8, UPC-A, Code128, Code39, QR desteklenir
+            </ThemedText>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1450,5 +1580,134 @@ const styles = StyleSheet.create({
   pickerItemTextSelected: {
     color: COLORS.primary.accent,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+
+  // Barcode Input Styles
+  barcodeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  barcodeInput: {
+    flex: 1,
+  },
+  scanButton: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.primary.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Barcode Scanner Modal Styles
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.base,
+    paddingTop: 60,
+    paddingBottom: SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  scannerCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: '#FFFFFF',
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  scannerFrame: {
+    width: screenWidth * 0.75,
+    height: screenWidth * 0.5,
+    borderRadius: RADIUS.xl,
+    position: 'relative',
+    backgroundColor: 'transparent',
+  },
+  scannerCorner: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderColor: COLORS.primary.accent,
+    borderWidth: 4,
+  },
+  topLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: RADIUS.lg,
+  },
+  topRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: RADIUS.lg,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: RADIUS.lg,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: RADIUS.lg,
+  },
+  scannerHint: {
+    marginTop: SPACING.xl,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.lg,
+  },
+  scannerFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SPACING.base,
+    paddingTop: SPACING.md,
+    paddingBottom: 40,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    alignItems: 'center',
+  },
+  scannerFooterText: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: '#FFFFFF',
+    opacity: 0.7,
+    textAlign: 'center',
   },
 });
