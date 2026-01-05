@@ -134,13 +134,13 @@ db.exec(`
   )
 `);
 
-// Urunler tablosu (enhanced)
+// Urunler tablosu (enhanced - Unique Item bazlı)
 db.exec(`
   CREATE TABLE IF NOT EXISTS urunler (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     sku TEXT,
-    barcode TEXT,
+    barcode TEXT UNIQUE,
     category TEXT,
     default_price REAL,
     default_cost REAL,
@@ -158,6 +158,23 @@ db.exec(`
     min_stock_alert INTEGER DEFAULT 5,
     branch_id INTEGER,
     images TEXT,
+    -- Unique Item özellikleri (Halı/Kuyum için)
+    is_unique_item INTEGER DEFAULT 0,
+    item_status TEXT DEFAULT 'available',
+    origin_region TEXT,
+    material TEXT,
+    knot_density TEXT,
+    weave_year TEXT,
+    weaver_name TEXT,
+    certificate_no TEXT,
+    -- Konsinye (Emanet) Mal Bilgileri
+    is_consignment INTEGER DEFAULT 0,
+    consignment_owner_id INTEGER,
+    consignment_price REAL,
+    consignment_rate REAL,
+    -- Minimum satış fiyatı (zararına satış koruması)
+    min_sale_price REAL,
+    tag_price REAL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
@@ -482,6 +499,182 @@ db.exec(`
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// ==================== GOLDIST ERP TABLOLARI ====================
+
+// Mal Sahipleri tablosu (Konsinye için)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS mal_sahipleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'individual',
+    phone TEXT,
+    email TEXT,
+    address TEXT,
+    city TEXT,
+    bank_info TEXT,
+    tax_no TEXT,
+    account_balance REAL DEFAULT 0,
+    notes TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Operasyonlar tablosu (Grup giriş/çıkış takibi)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS operasyonlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT DEFAULT CURRENT_TIMESTAMP,
+    branch_id INTEGER,
+    agency_id INTEGER,
+    guide_id INTEGER,
+    pax INTEGER DEFAULT 0,
+    nationality TEXT,
+    vehicle_plate TEXT,
+    arrival_time TEXT,
+    departure_time TEXT,
+    status TEXT DEFAULT 'expected',
+    notes TEXT,
+    created_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES subeler(id),
+    FOREIGN KEY (agency_id) REFERENCES acentalar(id),
+    FOREIGN KEY (guide_id) REFERENCES rehberler(id)
+  )
+`);
+
+// Çoklu Ödemeler tablosu (Split Payment)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS siparis_odemeleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    payment_method TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'USD',
+    exchange_rate REAL DEFAULT 1,
+    amount_local REAL,
+    card_type TEXT,
+    card_last_four TEXT,
+    reference_no TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'completed',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES siparisler(id)
+  )
+`);
+
+// Kargo Takip tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS kargo_takip (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    carrier TEXT,
+    tracking_number TEXT,
+    shipping_type TEXT,
+    incoterm TEXT,
+    customs_status TEXT DEFAULT 'pending',
+    customs_value REAL,
+    customs_currency TEXT DEFAULT 'USD',
+    shipping_cost REAL,
+    insurance_cost REAL,
+    estimated_delivery TEXT,
+    actual_delivery TEXT,
+    destination_country TEXT,
+    destination_address TEXT,
+    status TEXT DEFAULT 'preparing',
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES siparisler(id)
+  )
+`);
+
+// Sertifikalar tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sertifikalar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER,
+    product_id INTEGER,
+    certificate_no TEXT UNIQUE,
+    certificate_type TEXT DEFAULT 'authenticity',
+    product_name TEXT,
+    origin_region TEXT,
+    material TEXT,
+    dimensions TEXT,
+    knot_density TEXT,
+    weave_year TEXT,
+    weaver_info TEXT,
+    customer_name TEXT,
+    issue_date TEXT,
+    pdf_path TEXT,
+    qr_code TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES siparisler(id),
+    FOREIGN KEY (product_id) REFERENCES urunler(id)
+  )
+`);
+
+// Kasa Hareketleri tablosu
+db.exec(`
+  CREATE TABLE IF NOT EXISTS kasa_hareketleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    branch_id INTEGER,
+    date TEXT DEFAULT CURRENT_TIMESTAMP,
+    type TEXT NOT NULL,
+    category TEXT,
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'TRY',
+    payment_method TEXT,
+    related_entity_type TEXT,
+    related_entity_id INTEGER,
+    order_id INTEGER,
+    description TEXT,
+    reference_no TEXT,
+    created_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES subeler(id)
+  )
+`);
+
+// ==================== ÜRÜN MIGRATION (Unique Item özellikleri) ====================
+
+const urunUniqueItemKolonlari = [
+  { name: 'is_unique_item', type: 'INTEGER DEFAULT 0' },
+  { name: 'item_status', type: 'TEXT DEFAULT "available"' },
+  { name: 'origin_region', type: 'TEXT' },
+  { name: 'material', type: 'TEXT' },
+  { name: 'knot_density', type: 'TEXT' },
+  { name: 'weave_year', type: 'TEXT' },
+  { name: 'weaver_name', type: 'TEXT' },
+  { name: 'certificate_no', type: 'TEXT' },
+  { name: 'is_consignment', type: 'INTEGER DEFAULT 0' },
+  { name: 'consignment_owner_id', type: 'INTEGER' },
+  { name: 'consignment_price', type: 'REAL' },
+  { name: 'consignment_rate', type: 'REAL' },
+  { name: 'min_sale_price', type: 'REAL' },
+  { name: 'tag_price', type: 'REAL' }
+];
+
+urunUniqueItemKolonlari.forEach(col => {
+  addColumnIfNotExists('urunler', col.name, col.type);
+});
+
+// Sipariş tablosuna operasyon ve kargo alanları ekle
+const siparisEkKolonlari = [
+  { name: 'operation_id', type: 'INTEGER' },
+  { name: 'shipping_type', type: 'TEXT' },
+  { name: 'shipping_incoterm', type: 'TEXT' },
+  { name: 'profitability_warning', type: 'TEXT' },
+  { name: 'is_profitable', type: 'INTEGER DEFAULT 1' }
+];
+
+siparisEkKolonlari.forEach(col => {
+  addColumnIfNotExists('siparisler', col.name, col.type);
+});
 
 // ==================== SİPARİŞ FİNANSAL MIGRATION ====================
 
@@ -3780,6 +3973,614 @@ app.get('/api/reports/financial-summary', (req, res) => {
   } catch (error) {
     console.error('Finansal özet hatası:', error);
     res.status(500).json({ error: 'Özet oluşturulamadı' });
+  }
+});
+
+// ==================== OPERASYONLAR (GRUP GİRİŞ/ÇIKIŞ) API ====================
+
+// Operasyon listesi
+app.get('/api/operations', (req, res) => {
+  try {
+    const { status, date, branch_id } = req.query;
+    let query = `
+      SELECT o.*, a.name as agency_name, g.name as guide_name, b.name as branch_name
+      FROM operasyonlar o
+      LEFT JOIN acentalar a ON o.agency_id = a.id
+      LEFT JOIN rehberler g ON o.guide_id = g.id
+      LEFT JOIN subeler b ON o.branch_id = b.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (status) {
+      query += ' AND o.status = ?';
+      params.push(status);
+    }
+
+    if (date) {
+      query += ' AND DATE(o.date) = ?';
+      params.push(date);
+    }
+
+    if (branch_id) {
+      query += ' AND o.branch_id = ?';
+      params.push(branch_id);
+    }
+
+    query += ' ORDER BY o.date DESC, o.arrival_time DESC';
+
+    const operations = db.prepare(query).all(...params);
+    res.json(operations);
+  } catch (error) {
+    console.error('Operasyon listesi hatası:', error);
+    res.status(500).json({ error: 'Operasyonlar alınamadı' });
+  }
+});
+
+// Aktif operasyonlar (şu an içerde olan gruplar)
+app.get('/api/operations/active', (req, res) => {
+  try {
+    const { branch_id } = req.query;
+    let query = `
+      SELECT o.*, a.name as agency_name, a.commission_rate as agency_rate,
+             g.name as guide_name, g.commission_rate as guide_rate,
+             b.name as branch_name
+      FROM operasyonlar o
+      LEFT JOIN acentalar a ON o.agency_id = a.id
+      LEFT JOIN rehberler g ON o.guide_id = g.id
+      LEFT JOIN subeler b ON o.branch_id = b.id
+      WHERE o.status = 'inside'
+    `;
+    const params = [];
+
+    if (branch_id) {
+      query += ' AND o.branch_id = ?';
+      params.push(branch_id);
+    }
+
+    query += ' ORDER BY o.arrival_time DESC';
+
+    const operations = db.prepare(query).all(...params);
+
+    // Her operasyona o grup için yapılan satışları ekle
+    const result = operations.map(op => {
+      const sales = db.prepare(`
+        SELECT COUNT(*) as order_count, COALESCE(SUM(total), 0) as total_revenue
+        FROM siparisler WHERE operation_id = ?
+      `).get(op.id);
+      return { ...op, ...sales };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Aktif operasyonlar hatası:', error);
+    res.status(500).json({ error: 'Aktif operasyonlar alınamadı' });
+  }
+});
+
+// Yeni operasyon (Grup girişi)
+app.post('/api/operations', (req, res) => {
+  const { branch_id, agency_id, guide_id, pax, nationality, vehicle_plate, arrival_time, notes, created_by } = req.body;
+
+  if (!agency_id) {
+    return res.status(400).json({ error: 'Acenta seçimi zorunludur' });
+  }
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO operasyonlar (branch_id, agency_id, guide_id, pax, nationality, vehicle_plate, arrival_time, status, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'inside', ?, ?)
+    `);
+
+    const result = stmt.run(
+      branch_id,
+      agency_id,
+      guide_id || null,
+      pax || 0,
+      nationality,
+      vehicle_plate,
+      arrival_time || new Date().toISOString(),
+      notes,
+      created_by
+    );
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      message: 'Grup girişi kaydedildi'
+    });
+  } catch (error) {
+    console.error('Operasyon oluşturma hatası:', error);
+    res.status(500).json({ error: 'Operasyon kaydedilemedi' });
+  }
+});
+
+// Operasyon durumu güncelle (Grup çıkışı)
+app.put('/api/operations/:id/checkout', (req, res) => {
+  try {
+    const stmt = db.prepare(`
+      UPDATE operasyonlar SET
+        status = 'left',
+        departure_time = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Operasyon bulunamadı' });
+    }
+
+    res.json({ message: 'Grup çıkışı kaydedildi' });
+  } catch (error) {
+    console.error('Operasyon güncelleme hatası:', error);
+    res.status(500).json({ error: 'Güncelleme yapılamadı' });
+  }
+});
+
+// ==================== KARLILIK ANALİZİ API ====================
+
+// Kârlılık analizi (Sipariş öncesi)
+app.post('/api/profitability-check', (req, res) => {
+  try {
+    const { product_id, sale_price, agency_id, guide_id, tax_rate = 20 } = req.body;
+
+    if (!product_id || !sale_price) {
+      return res.status(400).json({ error: 'Ürün ID ve satış fiyatı gerekli' });
+    }
+
+    const product = db.prepare('SELECT * FROM urunler WHERE id = ?').get(product_id);
+    if (!product) {
+      return res.status(404).json({ error: 'Ürün bulunamadı' });
+    }
+
+    // Temel hesaplamalar
+    const grossSale = parseFloat(sale_price);
+    const taxAmount = (grossSale * tax_rate) / (100 + tax_rate);
+    const netSale = grossSale - taxAmount;
+
+    // Komisyonları hesapla
+    let agencyCommission = 0;
+    let guideCommission = 0;
+
+    if (agency_id) {
+      const agency = db.prepare('SELECT commission_rate FROM acentalar WHERE id = ?').get(agency_id);
+      if (agency) {
+        agencyCommission = netSale * (agency.commission_rate / 100);
+      }
+    }
+
+    if (guide_id) {
+      const guide = db.prepare('SELECT commission_rate FROM rehberler WHERE id = ?').get(guide_id);
+      if (guide) {
+        guideCommission = netSale * (guide.commission_rate / 100);
+      }
+    }
+
+    // Konsinye mal kontrolü
+    let consignmentCost = 0;
+    if (product.is_consignment && product.consignment_price) {
+      consignmentCost = product.consignment_price;
+    }
+
+    // Maliyet hesabı
+    const productCost = product.default_cost || 0;
+    const totalCost = productCost + consignmentCost;
+    const totalCommissions = agencyCommission + guideCommission;
+    const netProfit = netSale - totalCommissions - totalCost;
+    const profitMargin = netSale > 0 ? (netProfit / netSale) * 100 : 0;
+
+    // Uyarı durumu
+    let warning = null;
+    let isProfitable = true;
+    let riskLevel = 'low';
+
+    if (netProfit < 0) {
+      warning = `ZARAR! Bu satış ${Math.abs(netProfit).toFixed(2)} USD zarar eder.`;
+      isProfitable = false;
+      riskLevel = 'critical';
+    } else if (profitMargin < 10) {
+      warning = `DİKKAT! Kâr marjı çok düşük (%${profitMargin.toFixed(1)})`;
+      riskLevel = 'high';
+    } else if (profitMargin < 20) {
+      warning = `Kâr marjı düşük (%${profitMargin.toFixed(1)})`;
+      riskLevel = 'medium';
+    }
+
+    // Minimum satış fiyatı önerisi (en az %15 kâr için)
+    const minProfitMargin = 0.15;
+    const minSalePrice = (totalCost + totalCommissions) / (1 - minProfitMargin - (tax_rate / 100));
+
+    res.json({
+      product: {
+        id: product.id,
+        name: product.name,
+        cost: productCost,
+        is_consignment: product.is_consignment,
+        consignment_cost: consignmentCost,
+        tag_price: product.tag_price,
+        min_sale_price: product.min_sale_price
+      },
+      analysis: {
+        gross_sale: grossSale,
+        tax_amount: taxAmount,
+        net_sale: netSale,
+        agency_commission: agencyCommission,
+        guide_commission: guideCommission,
+        total_commissions: totalCommissions,
+        product_cost: totalCost,
+        net_profit: netProfit,
+        profit_margin: profitMargin
+      },
+      recommendation: {
+        min_sale_price: minSalePrice,
+        suggested_price: minSalePrice * 1.1 // %10 buffer
+      },
+      warning,
+      is_profitable: isProfitable,
+      risk_level: riskLevel
+    });
+  } catch (error) {
+    console.error('Kârlılık analizi hatası:', error);
+    res.status(500).json({ error: 'Analiz yapılamadı' });
+  }
+});
+
+// ==================== ÇOKLU ÖDEME (SPLIT PAYMENT) API ====================
+
+// Siparişin ödemelerini listele
+app.get('/api/orders/:id/payments', (req, res) => {
+  try {
+    const payments = db.prepare(`
+      SELECT * FROM siparis_odemeleri WHERE order_id = ? ORDER BY created_at ASC
+    `).all(req.params.id);
+
+    const order = db.prepare('SELECT total FROM siparisler WHERE id = ?').get(req.params.id);
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+
+    res.json({
+      payments,
+      total_order: order?.total || 0,
+      total_paid: totalPaid,
+      remaining: (order?.total || 0) - totalPaid
+    });
+  } catch (error) {
+    console.error('Ödeme listesi hatası:', error);
+    res.status(500).json({ error: 'Ödemeler alınamadı' });
+  }
+});
+
+// Siparişe ödeme ekle
+app.post('/api/orders/:id/payments', (req, res) => {
+  const { payment_method, amount, currency, exchange_rate, card_type, card_last_four, reference_no, notes } = req.body;
+
+  if (!payment_method || !amount) {
+    return res.status(400).json({ error: 'Ödeme yöntemi ve tutar gerekli' });
+  }
+
+  try {
+    const order = db.prepare('SELECT * FROM siparisler WHERE id = ?').get(req.params.id);
+    if (!order) {
+      return res.status(404).json({ error: 'Sipariş bulunamadı' });
+    }
+
+    // Mevcut ödemeleri kontrol et
+    const existingPayments = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM siparis_odemeleri WHERE order_id = ?').get(req.params.id);
+    const remaining = order.total - existingPayments.total;
+
+    if (amount > remaining) {
+      return res.status(400).json({ error: `Maksimum ödeme tutarı: ${remaining.toFixed(2)}` });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO siparis_odemeleri (order_id, payment_method, amount, currency, exchange_rate, amount_local, card_type, card_last_four, reference_no, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const amountLocal = amount * (exchange_rate || 1);
+    const result = stmt.run(req.params.id, payment_method, amount, currency || 'USD', exchange_rate || 1, amountLocal, card_type, card_last_four, reference_no, notes);
+
+    // Ödeme tamamlandı mı kontrol et
+    const newTotal = existingPayments.total + amount;
+    if (newTotal >= order.total) {
+      db.prepare('UPDATE siparisler SET payment_status = ? WHERE id = ?').run('paid', req.params.id);
+    } else {
+      db.prepare('UPDATE siparisler SET payment_status = ? WHERE id = ?').run('partial', req.params.id);
+    }
+
+    // Kasa hareketi kaydet
+    db.prepare(`
+      INSERT INTO kasa_hareketleri (branch_id, type, category, amount, currency, payment_method, order_id, description, created_by)
+      VALUES (?, 'income', 'sale', ?, ?, ?, ?, ?, ?)
+    `).run(order.branch_id, amount, currency || 'USD', payment_method, req.params.id, `Sipariş #${order.order_no}`, null);
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      message: 'Ödeme kaydedildi',
+      remaining: remaining - amount
+    });
+  } catch (error) {
+    console.error('Ödeme ekleme hatası:', error);
+    res.status(500).json({ error: 'Ödeme kaydedilemedi' });
+  }
+});
+
+// ==================== KARGO TAKİP API ====================
+
+// Kargo bilgisi oluştur/güncelle
+app.post('/api/orders/:id/shipping', (req, res) => {
+  const { carrier, tracking_number, shipping_type, incoterm, customs_value, customs_currency, shipping_cost, insurance_cost, estimated_delivery, destination_country, destination_address, notes } = req.body;
+
+  try {
+    // Mevcut kargo kaydı var mı kontrol et
+    const existing = db.prepare('SELECT id FROM kargo_takip WHERE order_id = ?').get(req.params.id);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE kargo_takip SET
+          carrier = COALESCE(?, carrier),
+          tracking_number = COALESCE(?, tracking_number),
+          shipping_type = COALESCE(?, shipping_type),
+          incoterm = COALESCE(?, incoterm),
+          customs_value = COALESCE(?, customs_value),
+          customs_currency = COALESCE(?, customs_currency),
+          shipping_cost = COALESCE(?, shipping_cost),
+          insurance_cost = COALESCE(?, insurance_cost),
+          estimated_delivery = COALESCE(?, estimated_delivery),
+          destination_country = COALESCE(?, destination_country),
+          destination_address = COALESCE(?, destination_address),
+          notes = COALESCE(?, notes),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE order_id = ?
+      `).run(carrier, tracking_number, shipping_type, incoterm, customs_value, customs_currency, shipping_cost, insurance_cost, estimated_delivery, destination_country, destination_address, notes, req.params.id);
+
+      res.json({ message: 'Kargo bilgisi güncellendi' });
+    } else {
+      const stmt = db.prepare(`
+        INSERT INTO kargo_takip (order_id, carrier, tracking_number, shipping_type, incoterm, customs_value, customs_currency, shipping_cost, insurance_cost, estimated_delivery, destination_country, destination_address, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const result = stmt.run(req.params.id, carrier, tracking_number, shipping_type, incoterm, customs_value, customs_currency, shipping_cost, insurance_cost, estimated_delivery, destination_country, destination_address, notes);
+
+      res.status(201).json({
+        id: result.lastInsertRowid,
+        message: 'Kargo bilgisi oluşturuldu'
+      });
+    }
+  } catch (error) {
+    console.error('Kargo kayıt hatası:', error);
+    res.status(500).json({ error: 'Kargo bilgisi kaydedilemedi' });
+  }
+});
+
+// Kargo durumunu güncelle
+app.put('/api/shipping/:id/status', (req, res) => {
+  const { status, actual_delivery } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      UPDATE kargo_takip SET
+        status = ?,
+        actual_delivery = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(status, actual_delivery, req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Kargo kaydı bulunamadı' });
+    }
+
+    res.json({ message: 'Kargo durumu güncellendi' });
+  } catch (error) {
+    console.error('Kargo güncelleme hatası:', error);
+    res.status(500).json({ error: 'Durum güncellenemedi' });
+  }
+});
+
+// ==================== MAL SAHİPLERİ (KONSİNYE) API ====================
+
+// Mal sahipleri listesi
+app.get('/api/consignment-owners', (req, res) => {
+  try {
+    const owners = db.prepare('SELECT * FROM mal_sahipleri WHERE is_active = 1 ORDER BY name ASC').all();
+    res.json(owners);
+  } catch (error) {
+    console.error('Mal sahipleri hatası:', error);
+    res.status(500).json({ error: 'Mal sahipleri alınamadı' });
+  }
+});
+
+// Yeni mal sahibi ekle
+app.post('/api/consignment-owners', (req, res) => {
+  const { code, name, type, phone, email, address, city, bank_info, tax_no, notes } = req.body;
+
+  if (!code || !name) {
+    return res.status(400).json({ error: 'Kod ve isim zorunludur' });
+  }
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO mal_sahipleri (code, name, type, phone, email, address, city, bank_info, tax_no, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(code, name, type || 'individual', phone, email, address, city, bank_info, tax_no, notes);
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      message: 'Mal sahibi oluşturuldu'
+    });
+  } catch (error) {
+    console.error('Mal sahibi ekleme hatası:', error);
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(400).json({ error: 'Bu kod zaten kullanılıyor' });
+    }
+    res.status(500).json({ error: 'Mal sahibi eklenemedi' });
+  }
+});
+
+// Mal sahibi cari hesap detayı
+app.get('/api/consignment-owners/:id/account', (req, res) => {
+  try {
+    const owner = db.prepare('SELECT * FROM mal_sahipleri WHERE id = ?').get(req.params.id);
+    if (!owner) {
+      return res.status(404).json({ error: 'Mal sahibi bulunamadı' });
+    }
+
+    // Bu mal sahibine ait satılan ürünler
+    const soldProducts = db.prepare(`
+      SELECT u.*, s.order_no, s.date as sale_date, s.total as sale_price
+      FROM urunler u
+      JOIN siparisler s ON JSON_EXTRACT(s.products, '$[0].id') = u.id
+      WHERE u.consignment_owner_id = ? AND u.item_status = 'sold'
+    `).all(req.params.id);
+
+    // Bekleyen alacak (satılmış ama ödenmemiş)
+    const pendingAmount = soldProducts.reduce((sum, p) => sum + (p.consignment_price || 0), 0);
+
+    res.json({
+      owner,
+      sold_products: soldProducts,
+      pending_amount: pendingAmount,
+      current_balance: owner.account_balance
+    });
+  } catch (error) {
+    console.error('Cari hesap hatası:', error);
+    res.status(500).json({ error: 'Cari hesap alınamadı' });
+  }
+});
+
+// ==================== DASHBOARD İSTATİSTİKLER API ====================
+
+// Canlı mağaza durumu
+app.get('/api/dashboard/live-status', (req, res) => {
+  try {
+    const { branch_id } = req.query;
+    let branchFilter = '';
+    const params = [];
+
+    if (branch_id) {
+      branchFilter = ' AND branch_id = ?';
+      params.push(branch_id);
+    }
+
+    // Aktif gruplar ve toplam turist sayısı
+    const activeOps = db.prepare(`
+      SELECT COUNT(*) as group_count, COALESCE(SUM(pax), 0) as total_pax
+      FROM operasyonlar
+      WHERE status = 'inside' ${branchFilter.replace('branch_id', 'branch_id')}
+    `).get(...params);
+
+    // Bugünkü satışlar
+    const today = new Date().toISOString().split('T')[0];
+    const todaySales = db.prepare(`
+      SELECT
+        COUNT(*) as order_count,
+        COALESCE(SUM(total), 0) as total_revenue,
+        COALESCE(SUM(net_company_profit), 0) as total_profit
+      FROM siparisler
+      WHERE DATE(date) = ? ${branchFilter}
+    `).get(today, ...params);
+
+    // Bekleyen ödemeler
+    const pendingPayments = db.prepare(`
+      SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as amount
+      FROM siparisler
+      WHERE payment_status != 'paid' ${branchFilter}
+    `).get(...params);
+
+    res.json({
+      live: {
+        active_groups: activeOps.group_count,
+        tourists_inside: activeOps.total_pax
+      },
+      today: {
+        order_count: todaySales.order_count,
+        revenue: todaySales.total_revenue,
+        profit: todaySales.total_profit
+      },
+      pending: {
+        payment_count: pendingPayments.count,
+        pending_amount: pendingPayments.amount
+      }
+    });
+  } catch (error) {
+    console.error('Dashboard hatası:', error);
+    res.status(500).json({ error: 'Dashboard verileri alınamadı' });
+  }
+});
+
+// Ciro ve kârlılık özeti
+app.get('/api/dashboard/financial-overview', (req, res) => {
+  try {
+    const { period = 'today', branch_id } = req.query;
+
+    let dateFilter = '';
+    const today = new Date().toISOString().split('T')[0];
+
+    switch (period) {
+      case 'today':
+        dateFilter = `DATE(date) = '${today}'`;
+        break;
+      case 'week':
+        dateFilter = `date >= date('now', '-7 days')`;
+        break;
+      case 'month':
+        dateFilter = `date >= date('now', '-30 days')`;
+        break;
+      case 'year':
+        dateFilter = `date >= date('now', '-365 days')`;
+        break;
+      default:
+        dateFilter = `DATE(date) = '${today}'`;
+    }
+
+    let branchFilter = '';
+    if (branch_id) {
+      branchFilter = ` AND branch_id = ${branch_id}`;
+    }
+
+    const summary = db.prepare(`
+      SELECT
+        COUNT(*) as total_orders,
+        COALESCE(SUM(total), 0) as gross_revenue,
+        COALESCE(SUM(net_total), 0) as net_revenue,
+        COALESCE(SUM(agency_commission_amt), 0) as agency_commissions,
+        COALESCE(SUM(guide_commission_amt), 0) as guide_commissions,
+        COALESCE(SUM(net_company_profit), 0) as net_profit
+      FROM siparisler
+      WHERE ${dateFilter} ${branchFilter}
+    `).get();
+
+    // Ödeme yöntemlerine göre dağılım
+    const paymentBreakdown = db.prepare(`
+      SELECT payment_method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+      FROM siparis_odemeleri sp
+      JOIN siparisler s ON sp.order_id = s.id
+      WHERE ${dateFilter.replace('date', 's.date')} ${branchFilter.replace('branch_id', 's.branch_id')}
+      GROUP BY payment_method
+    `).all();
+
+    // Para birimine göre dağılım
+    const currencyBreakdown = db.prepare(`
+      SELECT currency, COUNT(*) as count, COALESCE(SUM(total), 0) as total
+      FROM siparisler
+      WHERE ${dateFilter} ${branchFilter}
+      GROUP BY currency
+    `).all();
+
+    res.json({
+      period,
+      summary,
+      payment_breakdown: paymentBreakdown,
+      currency_breakdown: currencyBreakdown
+    });
+  } catch (error) {
+    console.error('Finansal özet hatası:', error);
+    res.status(500).json({ error: 'Finansal veriler alınamadı' });
   }
 });
 
