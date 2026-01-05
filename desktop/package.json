@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3001 && npm run dev:electron\"",
     "dev:react": "vite --port 3001",
-    "dev:electron": "electron .",
+    "dev:electron": "electron . --no-sandbox",
     "build": "tsc && vite build",
     "build:electron": "npm run build && electron-builder",
     "build:win": "npm run build && electron-builder --win",
