@@ -386,6 +386,127 @@ db.exec(`
   )
 `);
 
+// ==================== TURİZM & KOMİSYON TABLOLARI ====================
+
+// Acentalar (Agencies) tablosu - Ana acenta kaydı
+db.exec(`
+  CREATE TABLE IF NOT EXISTS acentalar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    group_type TEXT,
+    region TEXT,
+    commission_rate REAL DEFAULT 0,
+    contract_start DATE,
+    contract_end DATE,
+    bank_info TEXT,
+    contact_person TEXT,
+    phone TEXT,
+    email TEXT,
+    address TEXT,
+    notes TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Rehberler (Guides) tablosu - Acentaya bağlı veya serbest çalışanlar
+db.exec(`
+  CREATE TABLE IF NOT EXISTS rehberler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER,
+    name TEXT NOT NULL,
+    badge_number TEXT,
+    phone TEXT,
+    email TEXT,
+    commission_rate REAL DEFAULT 0,
+    commission_type TEXT DEFAULT 'percentage',
+    account_balance REAL DEFAULT 0,
+    bank_info TEXT,
+    notes TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agency_id) REFERENCES acentalar(id)
+  )
+`);
+
+// Komisyon Kurallari tablosu - Özelleştirilmiş komisyon kuralları
+db.exec(`
+  CREATE TABLE IF NOT EXISTS komisyon_kurallari (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_id INTEGER,
+    guide_id INTEGER,
+    product_category TEXT,
+    min_turnover REAL DEFAULT 0,
+    rate REAL NOT NULL,
+    rule_priority INTEGER DEFAULT 1,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agency_id) REFERENCES acentalar(id),
+    FOREIGN KEY (guide_id) REFERENCES rehberler(id)
+  )
+`);
+
+// Tezgahtar Primleri tablosu - Satış personeli prim sistemi
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tezgahtar_primleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    target_amount REAL,
+    bonus_rate REAL,
+    period TEXT,
+    achieved_amount REAL DEFAULT 0,
+    bonus_paid REAL DEFAULT 0,
+    is_paid INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )
+`);
+
+// Acenta/Rehber Ödeme Hareketleri tablosu - Hakediş ödemeleri takibi
+db.exec(`
+  CREATE TABLE IF NOT EXISTS hakediş_hareketleri (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    order_id INTEGER,
+    transaction_type TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT DEFAULT 'TRY',
+    description TEXT,
+    payment_method TEXT,
+    reference_no TEXT,
+    created_by INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// ==================== SİPARİŞ FİNANSAL MIGRATION ====================
+
+// Siparisler tablosuna finansal alanları ekle
+const siparisFinansKolonlari = [
+  { name: 'agency_id', type: 'INTEGER' },
+  { name: 'guide_id', type: 'INTEGER' },
+  { name: 'gross_total', type: 'REAL' },
+  { name: 'tax_rate', type: 'REAL DEFAULT 20' },
+  { name: 'tax_amount', type: 'REAL' },
+  { name: 'net_total', type: 'REAL' },
+  { name: 'agency_commission_rate', type: 'REAL' },
+  { name: 'agency_commission_amt', type: 'REAL' },
+  { name: 'guide_commission_rate', type: 'REAL' },
+  { name: 'guide_commission_amt', type: 'REAL' },
+  { name: 'net_company_profit', type: 'REAL' },
+  { name: 'salesman_1_id', type: 'INTEGER' },
+  { name: 'salesman_2_id', type: 'INTEGER' },
+  { name: 'commission_calculated', type: 'INTEGER DEFAULT 0' }
+];
+
+siparisFinansKolonlari.forEach(col => {
+  addColumnIfNotExists('siparisler', col.name, col.type);
+});
+
 // ==================== DEMO DATA ====================
 
 // Demo subeler
@@ -577,6 +698,69 @@ if (productCount.count === 0) {
   console.log('Demo urunler olusturuldu');
 }
 
+// Demo acentalar
+const agencyCount = db.prepare('SELECT COUNT(*) as count FROM acentalar').get();
+if (agencyCount.count === 0) {
+  const agencies = [
+    { code: 'A-001', name: 'Premium Tours', region: 'Sultanahmet', commission_rate: 30, contact_person: 'Ahmet Yılmaz', phone: '+90 532 111 2233', email: 'info@premiumtours.com' },
+    { code: 'A-002', name: 'Euro Travel', region: 'Kapalıçarşı', commission_rate: 25, contact_person: 'Mehmet Demir', phone: '+90 533 222 3344', email: 'info@eurotravel.com' },
+    { code: 'A-003', name: 'France Tours', region: 'Sultanahmet', commission_rate: 28, contact_person: 'Pierre Martin', phone: '+33 1 23 45 67', email: 'contact@francetours.fr' },
+    { code: 'A-004', name: 'Japan Travel Agency', region: 'Kapadokya', commission_rate: 35, contact_person: 'Tanaka San', phone: '+81 3 1234 5678', email: 'info@japantravel.jp' },
+    { code: 'A-005', name: 'Anatolian Explorers', region: 'İzmir', commission_rate: 22, contact_person: 'Ali Kaya', phone: '+90 535 444 5566', email: 'info@anatolianexp.com' }
+  ];
+
+  const insertAgency = db.prepare(`
+    INSERT INTO acentalar (code, name, region, commission_rate, contact_person, phone, email)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  agencies.forEach(a => insertAgency.run(a.code, a.name, a.region, a.commission_rate, a.contact_person, a.phone, a.email));
+  console.log('Demo acentalar olusturuldu');
+}
+
+// Demo rehberler
+const guideCount = db.prepare('SELECT COUNT(*) as count FROM rehberler').get();
+if (guideCount.count === 0) {
+  const guides = [
+    { agency_id: 1, name: 'Ali Kaya', badge_number: 'RH-001', phone: '+90 532 111 0001', commission_rate: 10 },
+    { agency_id: 1, name: 'Fatma Yıldız', badge_number: 'RH-002', phone: '+90 532 111 0002', commission_rate: 12 },
+    { agency_id: 2, name: 'Kemal Aslan', badge_number: 'RH-003', phone: '+90 532 222 0001', commission_rate: 8 },
+    { agency_id: 2, name: 'Zeynep Demir', badge_number: 'RH-004', phone: '+90 532 222 0002', commission_rate: 10 },
+    { agency_id: 3, name: 'Jean-Pierre Dubois', badge_number: 'RH-005', phone: '+33 6 12 34 56 78', commission_rate: 15 },
+    { agency_id: 4, name: 'Yuki Tanaka', badge_number: 'RH-006', phone: '+81 90 1234 5678', commission_rate: 12 },
+    { agency_id: null, name: 'Hasan Özkan', badge_number: 'RH-007', phone: '+90 533 333 0001', commission_rate: 18 },
+    { agency_id: null, name: 'Selin Arslan', badge_number: 'RH-008', phone: '+90 534 444 0001', commission_rate: 20 }
+  ];
+
+  const insertGuide = db.prepare(`
+    INSERT INTO rehberler (agency_id, name, badge_number, phone, commission_rate)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  guides.forEach(g => insertGuide.run(g.agency_id, g.name, g.badge_number, g.phone, g.commission_rate));
+  console.log('Demo rehberler olusturuldu');
+}
+
+// Demo komisyon kuralları
+const ruleCount = db.prepare('SELECT COUNT(*) as count FROM komisyon_kurallari').get();
+if (ruleCount.count === 0) {
+  const rules = [
+    { agency_id: 1, guide_id: null, product_category: 'Halı', min_turnover: 0, rate: 30, rule_priority: 1 },
+    { agency_id: 1, guide_id: null, product_category: 'Halı', min_turnover: 50000, rate: 35, rule_priority: 2 },
+    { agency_id: 1, guide_id: null, product_category: 'Kuyum', min_turnover: 0, rate: 25, rule_priority: 1 },
+    { agency_id: 2, guide_id: null, product_category: 'Halı', min_turnover: 0, rate: 25, rule_priority: 1 },
+    { agency_id: 2, guide_id: null, product_category: 'Deri', min_turnover: 0, rate: 20, rule_priority: 1 }
+  ];
+
+  const insertRule = db.prepare(`
+    INSERT INTO komisyon_kurallari (agency_id, guide_id, product_category, min_turnover, rate, rule_priority)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  rules.forEach(r => insertRule.run(r.agency_id, r.guide_id, r.product_category, r.min_turnover, r.rate, r.rule_priority));
+  console.log('Demo komisyon kurallari olusturuldu');
+}
+
 console.log('SQLite veritabanina baglandi');
 
 // ==================== HELPER FUNCTIONS ====================
@@ -645,6 +829,104 @@ function formatPhoneNumber(phone, countryCode) {
   }
 
   return cleaned;
+}
+
+// Komisyon Hesaplama Fonksiyonu - Goldist ERP mantığı
+function calculateCommissions(orderData) {
+  const grossTotal = parseFloat(orderData.total) || 0;
+  const taxRate = parseFloat(orderData.tax_rate) || 20; // Varsayılan %20 KDV
+  const taxAmount = (grossTotal * taxRate) / (100 + taxRate);
+  const netBase = grossTotal - taxAmount; // Komisyon matrahı (KDV'siz tutar)
+
+  let results = {
+    grossTotal: grossTotal,
+    taxRate: taxRate,
+    taxAmount: taxAmount,
+    netBase: netBase,
+    agencyRate: 0,
+    agencyAmt: 0,
+    guideRate: 0,
+    guideAmt: 0,
+    netCompany: netBase,
+    logs: []
+  };
+
+  // Acenta Komisyonu Hesaplama
+  if (orderData.agency_id) {
+    try {
+      const agency = db.prepare('SELECT * FROM acentalar WHERE id = ?').get(orderData.agency_id);
+
+      if (agency) {
+        // Önce özel kural var mı kontrol et
+        let specialRule = null;
+        if (orderData.product_category) {
+          specialRule = db.prepare(`
+            SELECT rate FROM komisyon_kurallari
+            WHERE agency_id = ? AND product_category = ? AND is_active = 1
+            ORDER BY min_turnover DESC, rule_priority DESC LIMIT 1
+          `).get(orderData.agency_id, orderData.product_category);
+        }
+
+        // Genel kural kontrolü
+        if (!specialRule) {
+          specialRule = db.prepare(`
+            SELECT rate FROM komisyon_kurallari
+            WHERE agency_id = ? AND product_category = 'General' AND is_active = 1
+            ORDER BY min_turnover DESC, rule_priority DESC LIMIT 1
+          `).get(orderData.agency_id);
+        }
+
+        results.agencyRate = specialRule ? specialRule.rate : (agency.commission_rate || 0);
+        results.agencyAmt = netBase * (results.agencyRate / 100);
+        results.logs.push(`Acenta: ${agency.name}, Oran: %${results.agencyRate}, Tutar: ${results.agencyAmt.toFixed(2)}`);
+      }
+    } catch (error) {
+      console.error('Acenta komisyon hesaplama hatası:', error);
+    }
+  }
+
+  // Rehber Komisyonu Hesaplama
+  if (orderData.guide_id) {
+    try {
+      const guide = db.prepare('SELECT * FROM rehberler WHERE id = ?').get(orderData.guide_id);
+
+      if (guide) {
+        results.guideRate = guide.commission_rate || 0;
+
+        if (guide.commission_type === 'fixed_amount') {
+          results.guideAmt = results.guideRate; // Sabit tutar
+        } else {
+          results.guideAmt = netBase * (results.guideRate / 100); // Yüzde
+        }
+
+        results.logs.push(`Rehber: ${guide.name}, Oran: %${results.guideRate}, Tutar: ${results.guideAmt.toFixed(2)}`);
+
+        // Rehber bakiyesini güncelle
+        db.prepare('UPDATE rehberler SET account_balance = account_balance + ? WHERE id = ?')
+          .run(results.guideAmt, orderData.guide_id);
+      }
+    } catch (error) {
+      console.error('Rehber komisyon hesaplama hatası:', error);
+    }
+  }
+
+  // Şirkete Kalan Net Kâr
+  results.netCompany = netBase - results.agencyAmt - results.guideAmt;
+  results.logs.push(`Şirkete Kalan Net: ${results.netCompany.toFixed(2)}`);
+
+  return results;
+}
+
+// Rehber/Acenta Hakediş Hareketi Kaydet
+function recordCommissionTransaction(entityType, entityId, orderId, amount, description, createdBy) {
+  try {
+    db.prepare(`
+      INSERT INTO hakediş_hareketleri (entity_type, entity_id, order_id, transaction_type, amount, description, created_by)
+      VALUES (?, ?, ?, 'commission', ?, ?, ?)
+    `).run(entityType, entityId, orderId, amount, description, createdBy);
+  } catch (error) {
+    console.error('Hakediş kaydı hatası:', error);
+  }
 }
 
 // ==================== API ENDPOINTS ====================
@@ -1550,13 +1832,44 @@ app.post('/api/orders', (req, res) => {
     const tax = parseFloat(orderData.tax) || 0;
     const total = orderData.total || (subtotal - discount + tax);
 
+    // ==================== KOMİSYON HESAPLAMASI ====================
+    // Acenta ve Rehber ID'lerini al (hem yeni hem eski format destekleniyor)
+    const agencyId = orderData.agency_id || orderData.shipping?.agency_id || null;
+    const guideId = orderData.guide_id || orderData.shipping?.guide_id || null;
+
+    // Acenta ve Rehber isimlerini uyumluluk için sakla
+    let agencyName = orderData.shipping?.agency || orderData.agency || '';
+    let guideName = orderData.shipping?.guide || orderData.guide || '';
+
+    // Eğer ID var ama isim yoksa, ID'den ismi al
+    if (agencyId && !agencyName) {
+      const agency = db.prepare('SELECT name FROM acentalar WHERE id = ?').get(agencyId);
+      if (agency) agencyName = agency.name;
+    }
+    if (guideId && !guideName) {
+      const guide = db.prepare('SELECT name FROM rehberler WHERE id = ?').get(guideId);
+      if (guide) guideName = guide.name;
+    }
+
+    // Komisyon hesapla
+    const commissionData = calculateCommissions({
+      agency_id: agencyId,
+      guide_id: guideId,
+      total: total,
+      tax_rate: orderData.tax_rate || 20,
+      product_category: orderData.product_category || 'General'
+    });
+
     const stmt = db.prepare(`
       INSERT INTO siparisler (date, order_no, order_type, branch_id, location, customer_id, customer_name, customer_address,
         customer_country, customer_city, customer_state, customer_phone, customer_email, customer_zip_code, customer_passport_no, customer_tax_no,
         shipping_address, shipping_city, shipping_state, shipping_country, shipping_postal_code,
         salesman, salesman_id, conference, cruise, agency, guide, pax, products, subtotal, discount, discount_type, tax, total, currency, exchange_rate,
-        payment_method, process, payment_status, passport_image, customer_signature, notes, internal_notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        payment_method, process, payment_status, passport_image, customer_signature, notes, internal_notes, created_by,
+        agency_id, guide_id, gross_total, tax_rate, tax_amount, net_total, agency_commission_rate, agency_commission_amt,
+        guide_commission_rate, guide_commission_amt, net_company_profit, salesman_1_id, salesman_2_id, commission_calculated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -1585,8 +1898,8 @@ app.post('/api/orders', (req, res) => {
       orderData.salesman_id,
       orderData.shipping?.conference || orderData.conference,
       orderData.shipping?.cruise || orderData.cruise,
-      orderData.shipping?.agency || orderData.agency,
-      orderData.shipping?.guide || orderData.guide,
+      agencyName,
+      guideName,
       orderData.shipping?.pax || orderData.pax,
       JSON.stringify(products),
       subtotal,
@@ -1603,8 +1916,33 @@ app.post('/api/orders', (req, res) => {
       orderData.customer_signature,
       orderData.notes,
       orderData.internal_notes,
-      orderData.created_by
+      orderData.created_by,
+      // Yeni finansal alanlar
+      agencyId,
+      guideId,
+      commissionData.grossTotal,
+      commissionData.taxRate,
+      commissionData.taxAmount,
+      commissionData.netBase,
+      commissionData.agencyRate,
+      commissionData.agencyAmt,
+      commissionData.guideRate,
+      commissionData.guideAmt,
+      commissionData.netCompany,
+      orderData.salesman_1_id || orderData.salesman_id,
+      orderData.salesman_2_id,
+      1 // commission_calculated
     );
+
+    const orderId = result.lastInsertRowid;
+
+    // Hakediş hareketlerini kaydet
+    if (agencyId && commissionData.agencyAmt > 0) {
+      recordCommissionTransaction('agency', agencyId, orderId, commissionData.agencyAmt, `Sipariş #${orderNo} - Acenta komisyonu`, orderData.created_by);
+    }
+    if (guideId && commissionData.guideAmt > 0) {
+      recordCommissionTransaction('guide', guideId, orderId, commissionData.guideAmt, `Sipariş #${orderNo} - Rehber komisyonu`, orderData.created_by);
+    }
 
     // Update customer totals if customer_id provided
     if (orderData.customer_id) {
@@ -1620,17 +1958,22 @@ app.post('/api/orders', (req, res) => {
     db.prepare(`
       INSERT INTO sevkiyat_gecmisi (order_id, status, notes, updated_by)
       VALUES (?, ?, ?, ?)
-    `).run(result.lastInsertRowid, 'Sipariş Oluşturuldu', 'Siparis olusturuldu', orderData.created_by);
+    `).run(orderId, 'Sipariş Oluşturuldu', 'Siparis olusturuldu', orderData.created_by);
 
-    logActivity(orderData.created_by, null, 'create', 'order', result.lastInsertRowid, orderNo, null, orderData, 'Yeni siparis olusturuldu', orderData.branch_id);
+    logActivity(orderData.created_by, null, 'create', 'order', orderId, orderNo, null, orderData, 'Yeni siparis olusturuldu', orderData.branch_id);
 
     // Create notification
-    createNotification(null, 'Yeni Siparis', `${orderNo} numarali siparis olusturuldu`, 'info', 'order', result.lastInsertRowid);
+    createNotification(null, 'Yeni Siparis', `${orderNo} numarali siparis olusturuldu`, 'info', 'order', orderId);
 
     res.status(201).json({
       message: 'Siparis basariyla kaydedildi',
-      orderId: result.lastInsertRowid,
-      orderNo: orderNo
+      orderId: orderId,
+      orderNo: orderNo,
+      commission: {
+        agency: { rate: commissionData.agencyRate, amount: commissionData.agencyAmt },
+        guide: { rate: commissionData.guideRate, amount: commissionData.guideAmt },
+        netCompany: commissionData.netCompany
+      }
     });
   } catch (error) {
     console.error('Siparis kaydetme hatasi:', error);
@@ -2793,6 +3136,650 @@ app.get('/api/products/search/sku', (req, res) => {
   } catch (error) {
     console.error('SKU arama hatası:', error);
     res.status(500).json({ error: 'SKU araması yapılamadı' });
+  }
+});
+
+// ==================== ACENTA (AGENCIES) API ====================
+
+// Tüm acentaları listele
+app.get('/api/agencies', (req, res) => {
+  try {
+    const { is_active, region, search } = req.query;
+    let query = 'SELECT * FROM acentalar WHERE 1=1';
+    const params = [];
+
+    if (is_active !== undefined) {
+      query += ' AND is_active = ?';
+      params.push(is_active);
+    }
+
+    if (region) {
+      query += ' AND region = ?';
+      params.push(region);
+    }
+
+    if (search) {
+      query += ' AND (name LIKE ? OR code LIKE ? OR contact_person LIKE ?)';
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+
+    query += ' ORDER BY name ASC';
+
+    const agencies = db.prepare(query).all(...params);
+    res.json(agencies);
+  } catch (error) {
+    console.error('Acenta listesi hatası:', error);
+    res.status(500).json({ error: 'Acentalar alınamadı' });
+  }
+});
+
+// Tek acenta detayı
+app.get('/api/agencies/:id', (req, res) => {
+  try {
+    const agency = db.prepare('SELECT * FROM acentalar WHERE id = ?').get(req.params.id);
+    if (!agency) {
+      return res.status(404).json({ error: 'Acenta bulunamadı' });
+    }
+
+    // Acentanın rehberlerini de getir
+    const guides = db.prepare('SELECT * FROM rehberler WHERE agency_id = ?').all(req.params.id);
+
+    // Acentanın komisyon kurallarını getir
+    const rules = db.prepare('SELECT * FROM komisyon_kurallari WHERE agency_id = ?').all(req.params.id);
+
+    // Acentanın toplam ciro ve komisyonunu hesapla
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) as total_orders,
+        COALESCE(SUM(total), 0) as total_revenue,
+        COALESCE(SUM(agency_commission_amt), 0) as total_commission
+      FROM siparisler WHERE agency_id = ?
+    `).get(req.params.id);
+
+    res.json({
+      ...agency,
+      guides,
+      commission_rules: rules,
+      statistics: stats
+    });
+  } catch (error) {
+    console.error('Acenta detay hatası:', error);
+    res.status(500).json({ error: 'Acenta bilgisi alınamadı' });
+  }
+});
+
+// Yeni acenta ekle
+app.post('/api/agencies', (req, res) => {
+  const { code, name, group_type, region, commission_rate, contract_start, contract_end, bank_info, contact_person, phone, email, address, notes } = req.body;
+
+  if (!code || !name) {
+    return res.status(400).json({ error: 'Acenta kodu ve adı zorunludur' });
+  }
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO acentalar (code, name, group_type, region, commission_rate, contract_start, contract_end, bank_info, contact_person, phone, email, address, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(code, name, group_type, region, commission_rate || 0, contract_start, contract_end, bank_info, contact_person, phone, email, address, notes);
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      message: 'Acenta başarıyla oluşturuldu'
+    });
+  } catch (error) {
+    console.error('Acenta ekleme hatası:', error);
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(400).json({ error: 'Bu acenta kodu zaten kullanılıyor' });
+    }
+    res.status(500).json({ error: 'Acenta eklenemedi' });
+  }
+});
+
+// Acenta güncelle
+app.put('/api/agencies/:id', (req, res) => {
+  const { code, name, group_type, region, commission_rate, contract_start, contract_end, bank_info, contact_person, phone, email, address, notes, is_active } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      UPDATE acentalar SET
+        code = COALESCE(?, code),
+        name = COALESCE(?, name),
+        group_type = ?,
+        region = ?,
+        commission_rate = COALESCE(?, commission_rate),
+        contract_start = ?,
+        contract_end = ?,
+        bank_info = ?,
+        contact_person = ?,
+        phone = ?,
+        email = ?,
+        address = ?,
+        notes = ?,
+        is_active = COALESCE(?, is_active),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(code, name, group_type, region, commission_rate, contract_start, contract_end, bank_info, contact_person, phone, email, address, notes, is_active, req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Acenta bulunamadı' });
+    }
+
+    res.json({ message: 'Acenta başarıyla güncellendi' });
+  } catch (error) {
+    console.error('Acenta güncelleme hatası:', error);
+    res.status(500).json({ error: 'Acenta güncellenemedi' });
+  }
+});
+
+// Acenta sil (soft delete)
+app.delete('/api/agencies/:id', (req, res) => {
+  try {
+    const stmt = db.prepare('UPDATE acentalar SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+    const result = stmt.run(req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Acenta bulunamadı' });
+    }
+
+    res.json({ message: 'Acenta başarıyla silindi' });
+  } catch (error) {
+    console.error('Acenta silme hatası:', error);
+    res.status(500).json({ error: 'Acenta silinemedi' });
+  }
+});
+
+// Acentaya bağlı rehberleri getir
+app.get('/api/agencies/:id/guides', (req, res) => {
+  try {
+    const guides = db.prepare(`
+      SELECT r.*, a.name as agency_name
+      FROM rehberler r
+      LEFT JOIN acentalar a ON r.agency_id = a.id
+      WHERE r.agency_id = ? AND r.is_active = 1
+      ORDER BY r.name ASC
+    `).all(req.params.id);
+
+    res.json(guides);
+  } catch (error) {
+    console.error('Acenta rehberleri hatası:', error);
+    res.status(500).json({ error: 'Rehberler alınamadı' });
+  }
+});
+
+// ==================== REHBER (GUIDES) API ====================
+
+// Tüm rehberleri listele
+app.get('/api/guides', (req, res) => {
+  try {
+    const { is_active, agency_id, search } = req.query;
+    let query = `
+      SELECT r.*, a.name as agency_name, a.code as agency_code
+      FROM rehberler r
+      LEFT JOIN acentalar a ON r.agency_id = a.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (is_active !== undefined) {
+      query += ' AND r.is_active = ?';
+      params.push(is_active);
+    }
+
+    if (agency_id) {
+      if (agency_id === 'null' || agency_id === 'freelance') {
+        query += ' AND r.agency_id IS NULL';
+      } else {
+        query += ' AND r.agency_id = ?';
+        params.push(agency_id);
+      }
+    }
+
+    if (search) {
+      query += ' AND (r.name LIKE ? OR r.badge_number LIKE ? OR r.phone LIKE ?)';
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+
+    query += ' ORDER BY r.name ASC';
+
+    const guides = db.prepare(query).all(...params);
+    res.json(guides);
+  } catch (error) {
+    console.error('Rehber listesi hatası:', error);
+    res.status(500).json({ error: 'Rehberler alınamadı' });
+  }
+});
+
+// Tek rehber detayı
+app.get('/api/guides/:id', (req, res) => {
+  try {
+    const guide = db.prepare(`
+      SELECT r.*, a.name as agency_name, a.code as agency_code
+      FROM rehberler r
+      LEFT JOIN acentalar a ON r.agency_id = a.id
+      WHERE r.id = ?
+    `).get(req.params.id);
+
+    if (!guide) {
+      return res.status(404).json({ error: 'Rehber bulunamadı' });
+    }
+
+    // Rehberin satış istatistikleri
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) as total_orders,
+        COALESCE(SUM(total), 0) as total_revenue,
+        COALESCE(SUM(guide_commission_amt), 0) as total_commission
+      FROM siparisler WHERE guide_id = ?
+    `).get(req.params.id);
+
+    // Son hakediş hareketleri
+    const transactions = db.prepare(`
+      SELECT * FROM hakediş_hareketleri
+      WHERE entity_type = 'guide' AND entity_id = ?
+      ORDER BY created_at DESC LIMIT 10
+    `).all(req.params.id);
+
+    res.json({
+      ...guide,
+      statistics: stats,
+      recent_transactions: transactions
+    });
+  } catch (error) {
+    console.error('Rehber detay hatası:', error);
+    res.status(500).json({ error: 'Rehber bilgisi alınamadı' });
+  }
+});
+
+// Yeni rehber ekle
+app.post('/api/guides', (req, res) => {
+  const { agency_id, name, badge_number, phone, email, commission_rate, commission_type, bank_info, notes } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: 'Rehber adı zorunludur' });
+  }
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO rehberler (agency_id, name, badge_number, phone, email, commission_rate, commission_type, bank_info, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(agency_id || null, name, badge_number, phone, email, commission_rate || 0, commission_type || 'percentage', bank_info, notes);
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      message: 'Rehber başarıyla oluşturuldu'
+    });
+  } catch (error) {
+    console.error('Rehber ekleme hatası:', error);
+    res.status(500).json({ error: 'Rehber eklenemedi' });
+  }
+});
+
+// Rehber güncelle
+app.put('/api/guides/:id', (req, res) => {
+  const { agency_id, name, badge_number, phone, email, commission_rate, commission_type, bank_info, notes, is_active } = req.body;
+
+  try {
+    const stmt = db.prepare(`
+      UPDATE rehberler SET
+        agency_id = ?,
+        name = COALESCE(?, name),
+        badge_number = ?,
+        phone = ?,
+        email = ?,
+        commission_rate = COALESCE(?, commission_rate),
+        commission_type = COALESCE(?, commission_type),
+        bank_info = ?,
+        notes = ?,
+        is_active = COALESCE(?, is_active),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(agency_id, name, badge_number, phone, email, commission_rate, commission_type, bank_info, notes, is_active, req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Rehber bulunamadı' });
+    }
+
+    res.json({ message: 'Rehber başarıyla güncellendi' });
+  } catch (error) {
+    console.error('Rehber güncelleme hatası:', error);
+    res.status(500).json({ error: 'Rehber güncellenemedi' });
+  }
+});
+
+// Rehber sil (soft delete)
+app.delete('/api/guides/:id', (req, res) => {
+  try {
+    const stmt = db.prepare('UPDATE rehberler SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+    const result = stmt.run(req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Rehber bulunamadı' });
+    }
+
+    res.json({ message: 'Rehber başarıyla silindi' });
+  } catch (error) {
+    console.error('Rehber silme hatası:', error);
+    res.status(500).json({ error: 'Rehber silinemedi' });
+  }
+});
+
+// Rehbere ödeme yap (bakiye düşür)
+app.post('/api/guides/:id/payment', (req, res) => {
+  const { amount, payment_method, reference_no, description, created_by } = req.body;
+
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: 'Geçerli bir tutar giriniz' });
+  }
+
+  try {
+    const guide = db.prepare('SELECT * FROM rehberler WHERE id = ?').get(req.params.id);
+
+    if (!guide) {
+      return res.status(404).json({ error: 'Rehber bulunamadı' });
+    }
+
+    if (amount > guide.account_balance) {
+      return res.status(400).json({ error: 'Ödeme tutarı bakiyeden fazla olamaz', current_balance: guide.account_balance });
+    }
+
+    // Bakiyeyi düşür
+    db.prepare('UPDATE rehberler SET account_balance = account_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(amount, req.params.id);
+
+    // Hakediş hareketi kaydet
+    db.prepare(`
+      INSERT INTO hakediş_hareketleri (entity_type, entity_id, transaction_type, amount, description, payment_method, reference_no, created_by)
+      VALUES ('guide', ?, 'payment', ?, ?, ?, ?, ?)
+    `).run(req.params.id, -amount, description || 'Rehber ödemesi', payment_method, reference_no, created_by);
+
+    const updatedGuide = db.prepare('SELECT * FROM rehberler WHERE id = ?').get(req.params.id);
+
+    res.json({
+      message: 'Ödeme başarıyla kaydedildi',
+      new_balance: updatedGuide.account_balance
+    });
+  } catch (error) {
+    console.error('Rehber ödeme hatası:', error);
+    res.status(500).json({ error: 'Ödeme kaydedilemedi' });
+  }
+});
+
+// ==================== KOMİSYON KURALLARI API ====================
+
+// Komisyon kurallarını listele
+app.get('/api/commission-rules', (req, res) => {
+  try {
+    const { agency_id, guide_id, product_category } = req.query;
+    let query = `
+      SELECT cr.*, a.name as agency_name, g.name as guide_name
+      FROM komisyon_kurallari cr
+      LEFT JOIN acentalar a ON cr.agency_id = a.id
+      LEFT JOIN rehberler g ON cr.guide_id = g.id
+      WHERE cr.is_active = 1
+    `;
+    const params = [];
+
+    if (agency_id) {
+      query += ' AND cr.agency_id = ?';
+      params.push(agency_id);
+    }
+
+    if (guide_id) {
+      query += ' AND cr.guide_id = ?';
+      params.push(guide_id);
+    }
+
+    if (product_category) {
+      query += ' AND cr.product_category = ?';
+      params.push(product_category);
+    }
+
+    query += ' ORDER BY cr.rule_priority DESC, cr.min_turnover DESC';
+
+    const rules = db.prepare(query).all(...params);
+    res.json(rules);
+  } catch (error) {
+    console.error('Komisyon kuralları hatası:', error);
+    res.status(500).json({ error: 'Komisyon kuralları alınamadı' });
+  }
+});
+
+// Yeni komisyon kuralı ekle
+app.post('/api/commission-rules', (req, res) => {
+  const { agency_id, guide_id, product_category, min_turnover, rate, rule_priority } = req.body;
+
+  if (rate === undefined || rate === null) {
+    return res.status(400).json({ error: 'Komisyon oranı zorunludur' });
+  }
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO komisyon_kurallari (agency_id, guide_id, product_category, min_turnover, rate, rule_priority)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(agency_id || null, guide_id || null, product_category || 'General', min_turnover || 0, rate, rule_priority || 1);
+
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      message: 'Komisyon kuralı oluşturuldu'
+    });
+  } catch (error) {
+    console.error('Komisyon kuralı ekleme hatası:', error);
+    res.status(500).json({ error: 'Komisyon kuralı eklenemedi' });
+  }
+});
+
+// Komisyon kuralı sil
+app.delete('/api/commission-rules/:id', (req, res) => {
+  try {
+    const stmt = db.prepare('UPDATE komisyon_kurallari SET is_active = 0 WHERE id = ?');
+    const result = stmt.run(req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Kural bulunamadı' });
+    }
+
+    res.json({ message: 'Komisyon kuralı silindi' });
+  } catch (error) {
+    console.error('Komisyon kuralı silme hatası:', error);
+    res.status(500).json({ error: 'Kural silinemedi' });
+  }
+});
+
+// Komisyon önizleme (sipariş kaydetmeden hesaplama)
+app.post('/api/commission-preview', (req, res) => {
+  try {
+    const { agency_id, guide_id, total, tax_rate, product_category } = req.body;
+
+    const preview = calculateCommissions({
+      agency_id,
+      guide_id,
+      total: total || 0,
+      tax_rate: tax_rate || 20,
+      product_category
+    });
+
+    // Rehber bakiyesi güncellenmemeli preview'da, o yüzden geri al
+    if (guide_id && preview.guideAmt > 0) {
+      db.prepare('UPDATE rehberler SET account_balance = account_balance - ? WHERE id = ?')
+        .run(preview.guideAmt, guide_id);
+    }
+
+    res.json(preview);
+  } catch (error) {
+    console.error('Komisyon önizleme hatası:', error);
+    res.status(500).json({ error: 'Komisyon hesaplanamadı' });
+  }
+});
+
+// ==================== FİNANSAL RAPORLAR API ====================
+
+// Acenta hakediş raporu
+app.get('/api/reports/agency-commissions', (req, res) => {
+  try {
+    const { start_date, end_date, agency_id } = req.query;
+
+    let query = `
+      SELECT
+        a.id as agency_id,
+        a.code as agency_code,
+        a.name as agency_name,
+        COUNT(s.id) as total_orders,
+        COALESCE(SUM(s.total), 0) as total_revenue,
+        COALESCE(SUM(s.net_total), 0) as net_revenue,
+        COALESCE(SUM(s.agency_commission_amt), 0) as total_commission,
+        AVG(s.agency_commission_rate) as avg_commission_rate
+      FROM acentalar a
+      LEFT JOIN siparisler s ON a.id = s.agency_id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (start_date) {
+      query += ' AND s.date >= ?';
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      query += ' AND s.date <= ?';
+      params.push(end_date);
+    }
+
+    if (agency_id) {
+      query += ' AND a.id = ?';
+      params.push(agency_id);
+    }
+
+    query += ' GROUP BY a.id ORDER BY total_commission DESC';
+
+    const report = db.prepare(query).all(...params);
+    res.json(report);
+  } catch (error) {
+    console.error('Acenta raporu hatası:', error);
+    res.status(500).json({ error: 'Rapor oluşturulamadı' });
+  }
+});
+
+// Rehber hakediş raporu
+app.get('/api/reports/guide-commissions', (req, res) => {
+  try {
+    const { start_date, end_date, guide_id } = req.query;
+
+    let query = `
+      SELECT
+        r.id as guide_id,
+        r.name as guide_name,
+        r.badge_number,
+        r.account_balance,
+        a.name as agency_name,
+        COUNT(s.id) as total_orders,
+        COALESCE(SUM(s.total), 0) as total_revenue,
+        COALESCE(SUM(s.guide_commission_amt), 0) as total_commission,
+        AVG(s.guide_commission_rate) as avg_commission_rate
+      FROM rehberler r
+      LEFT JOIN acentalar a ON r.agency_id = a.id
+      LEFT JOIN siparisler s ON r.id = s.guide_id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (start_date) {
+      query += ' AND s.date >= ?';
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      query += ' AND s.date <= ?';
+      params.push(end_date);
+    }
+
+    if (guide_id) {
+      query += ' AND r.id = ?';
+      params.push(guide_id);
+    }
+
+    query += ' GROUP BY r.id ORDER BY total_commission DESC';
+
+    const report = db.prepare(query).all(...params);
+    res.json(report);
+  } catch (error) {
+    console.error('Rehber raporu hatası:', error);
+    res.status(500).json({ error: 'Rapor oluşturulamadı' });
+  }
+});
+
+// Genel finansal özet
+app.get('/api/reports/financial-summary', (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    let dateFilter = '';
+    const params = [];
+
+    if (start_date) {
+      dateFilter += ' AND date >= ?';
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      dateFilter += ' AND date <= ?';
+      params.push(end_date);
+    }
+
+    const summary = db.prepare(`
+      SELECT
+        COUNT(*) as total_orders,
+        COALESCE(SUM(gross_total), SUM(total)) as gross_revenue,
+        COALESCE(SUM(tax_amount), 0) as total_tax,
+        COALESCE(SUM(net_total), SUM(total)) as net_revenue,
+        COALESCE(SUM(agency_commission_amt), 0) as agency_commissions,
+        COALESCE(SUM(guide_commission_amt), 0) as guide_commissions,
+        COALESCE(SUM(net_company_profit), SUM(total)) as company_profit
+      FROM siparisler
+      WHERE 1=1 ${dateFilter}
+    `).get(...params);
+
+    // En çok satış yapan acenta
+    const topAgency = db.prepare(`
+      SELECT a.name, COUNT(s.id) as order_count, COALESCE(SUM(s.total), 0) as revenue
+      FROM siparisler s
+      JOIN acentalar a ON s.agency_id = a.id
+      WHERE 1=1 ${dateFilter}
+      GROUP BY a.id
+      ORDER BY revenue DESC
+      LIMIT 1
+    `).get(...params);
+
+    // En çok satış yapan rehber
+    const topGuide = db.prepare(`
+      SELECT r.name, COUNT(s.id) as order_count, COALESCE(SUM(s.total), 0) as revenue
+      FROM siparisler s
+      JOIN rehberler r ON s.guide_id = r.id
+      WHERE 1=1 ${dateFilter}
+      GROUP BY r.id
+      ORDER BY revenue DESC
+      LIMIT 1
+    `).get(...params);
+
+    res.json({
+      ...summary,
+      top_agency: topAgency || null,
+      top_guide: topGuide || null
+    });
+  } catch (error) {
+    console.error('Finansal özet hatası:', error);
+    res.status(500).json({ error: 'Özet oluşturulamadı' });
   }
 });
 
