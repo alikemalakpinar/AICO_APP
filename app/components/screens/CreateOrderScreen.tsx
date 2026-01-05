@@ -179,6 +179,23 @@ interface Product {
   priceUSD: string;
   barcode: string;
   notes: string;
+  // Maliyet ve kârlılık için yeni alanlar
+  cost: string;           // Ürün maliyeti (USD)
+  minSalePrice: string;   // Minimum satış fiyatı
+  productId?: number;     // Backend product ID
+}
+
+// Kârlılık analizi sonucu
+interface ProfitabilityResult {
+  isLoss: boolean;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low';
+  netProfit: number;
+  profitMargin: number;
+  totalCost: number;
+  totalRevenue: number;
+  commissions: number;
+  taxAmount: number;
+  message: string;
 }
 
 // Adım tanımları
@@ -225,6 +242,11 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
   const [commissionPreview, setCommissionPreview] = useState<CommissionPreview | null>(null);
   const [isLoadingCommission, setIsLoadingCommission] = useState(false);
 
+  // Kârlılık analizi state'leri
+  const [profitabilityResult, setProfitabilityResult] = useState<ProfitabilityResult | null>(null);
+  const [showProfitWarning, setShowProfitWarning] = useState(false);
+  const [isCheckingProfit, setIsCheckingProfit] = useState(false);
+
   const [formData, setFormData] = useState({
     // Temel Bilgiler
     date: new Date().toISOString().split('T')[0],
@@ -253,6 +275,8 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       priceUSD: '',
       barcode: '',
       notes: '',
+      cost: '',           // Ürün maliyeti
+      minSalePrice: '',   // Minimum satış fiyatı
     }] as Product[],
     paymentMethod: '',
 
@@ -484,20 +508,36 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
 
       if (existingProducts && existingProducts.length > 0) {
         const product = existingProducts[0];
+        // Maliyet ve minimum satış fiyatını da al
+        const productCost = product.default_cost || product.cost || 0;
+        const minPrice = product.min_sale_price || productCost * 1.1; // Minimum %10 kar marjı
+
         const newProduct: Product = {
           id: Date.now().toString(),
           name: product.name || '',
           quantity: '1',
           size: product.sizes || `${product.width}x${product.height}`,
-          priceUSD: product.price_usd?.toString() || '',
+          priceUSD: product.price_usd?.toString() || product.tag_price?.toString() || '',
           barcode: barcodeData,
           notes: '',
+          cost: productCost.toString(),
+          minSalePrice: minPrice.toString(),
+          productId: product.id,
         };
         setFormData(prev => ({
           ...prev,
           products: [...prev.products.filter(p => p.name), newProduct]
         }));
-        Alert.alert('Ürün Bulundu', `"${product.name}" eklendi.`);
+
+        // Maliyet bilgisi varsa göster
+        if (productCost > 0) {
+          Alert.alert(
+            'Ürün Bulundu',
+            `"${product.name}" eklendi.\nMaliyet: $${productCost.toFixed(2)}\nÖnerilen Fiyat: $${minPrice.toFixed(2)}+`
+          );
+        } else {
+          Alert.alert('Ürün Bulundu', `"${product.name}" eklendi.`);
+        }
       } else {
         Alert.alert('Yeni Barkod', 'Bu barkod sistemde kayıtlı değil.');
       }
@@ -551,6 +591,8 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       priceUSD: '',
       barcode: '',
       notes: '',
+      cost: '',
+      minSalePrice: '',
     };
     setFormData(prev => ({ ...prev, products: [...prev.products, newProduct] }));
   };
@@ -571,6 +613,100 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
     }));
   };
 
+  // Kârlılık kontrolü - Backend API kullan
+  const checkProfitability = async (): Promise<ProfitabilityResult | null> => {
+    const products = formData.products.filter(p => p.name.trim());
+    if (products.length === 0) return null;
+
+    // Toplam maliyet hesapla
+    const totalCost = products.reduce((sum, p) => {
+      const qty = parseFloat(p.quantity) || 1;
+      const cost = parseFloat(p.cost) || 0;
+      return sum + (qty * cost);
+    }, 0);
+
+    const totalRevenue = calculateTotal();
+
+    // Eğer maliyet bilgisi yoksa, backend'den kontrol et
+    if (totalCost === 0) {
+      try {
+        const response = await fetchWithTimeout(API_ENDPOINTS.profitabilityCheck, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            products: products.map(p => ({
+              product_id: p.productId,
+              barcode: p.barcode,
+              quantity: parseFloat(p.quantity) || 1,
+              sale_price: parseFloat(p.priceUSD) || 0,
+              cost: parseFloat(p.cost) || 0,
+            })),
+            agency_id: formData.shipping.agency_id,
+            guide_id: formData.shipping.guide_id,
+            total: totalRevenue,
+            tax_rate: 20,
+          })
+        });
+        const data = await response.json();
+        return {
+          isLoss: data.net_profit < 0,
+          riskLevel: data.risk_level || 'low',
+          netProfit: data.net_profit || 0,
+          profitMargin: data.profit_margin || 0,
+          totalCost: data.total_cost || 0,
+          totalRevenue: totalRevenue,
+          commissions: (data.agency_commission || 0) + (data.guide_commission || 0),
+          taxAmount: data.tax_amount || 0,
+          message: data.warning || '',
+        };
+      } catch (error) {
+        console.error('Kârlılık kontrolü hatası:', error);
+        return null;
+      }
+    }
+
+    // Frontend'de hesapla
+    const agencyRate = agencies.find(a => a.id === formData.shipping.agency_id)?.commission_rate || 0;
+    const guideRate = guides.find(g => g.id === formData.shipping.guide_id)?.commission_rate || 0;
+
+    const taxAmount = (totalRevenue * 20) / (100 + 20); // KDV dahil
+    const netBase = totalRevenue - taxAmount;
+    const agencyCommission = (netBase * agencyRate) / 100;
+    const guideCommission = (netBase * guideRate) / 100;
+    const totalCommissions = agencyCommission + guideCommission;
+
+    const netProfit = netBase - totalCommissions - totalCost;
+    const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+    let riskLevel: 'critical' | 'high' | 'medium' | 'low' = 'low';
+    let message = '';
+
+    if (netProfit < 0) {
+      riskLevel = 'critical';
+      message = `⚠️ ZARAR UYARISI: Bu satış $${Math.abs(netProfit).toFixed(2)} zarar edecek!`;
+    } else if (profitMargin < 5) {
+      riskLevel = 'high';
+      message = `⚠️ Düşük kâr marjı: %${profitMargin.toFixed(1)} - Onay gerekli`;
+    } else if (profitMargin < 15) {
+      riskLevel = 'medium';
+      message = `Kâr marjı normal: %${profitMargin.toFixed(1)}`;
+    } else {
+      message = `İyi kâr marjı: %${profitMargin.toFixed(1)}`;
+    }
+
+    return {
+      isLoss: netProfit < 0,
+      riskLevel,
+      netProfit,
+      profitMargin,
+      totalCost,
+      totalRevenue,
+      commissions: totalCommissions,
+      taxAmount,
+      message,
+    };
+  };
+
   // Sonraki adıma geç
   const nextStep = () => {
     // Step 1 validasyonu - şube seçilmiş olmalı
@@ -584,7 +720,7 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
     } else {
-      handleSubmit();
+      handleSubmit(false); // Kârlılık kontrolü ile submit
     }
   };
 
@@ -595,8 +731,8 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
     }
   };
 
-  // Siparişi gönder
-  const handleSubmit = async () => {
+  // Siparişi gönder (kârlılık kontrolü ile)
+  const handleSubmit = async (forceSubmit: boolean = false) => {
     // Validasyon kontrolleri
     if (!formData.customer.nameSurname.trim()) {
       Alert.alert('Uyarı', 'Lütfen müşteri adı soyadı girin.');
@@ -619,23 +755,48 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       return;
     }
 
+    // KÂRLILIK KONTROLÜ - forceSubmit değilse kontrol et
+    if (!forceSubmit) {
+      setIsCheckingProfit(true);
+      const profitResult = await checkProfitability();
+      setIsCheckingProfit(false);
+
+      if (profitResult) {
+        setProfitabilityResult(profitResult);
+
+        // Zarar veya düşük kâr marjı varsa uyarı göster
+        if (profitResult.riskLevel === 'critical' || profitResult.riskLevel === 'high') {
+          setShowProfitWarning(true);
+          return; // Modal'dan onay bekle
+        }
+      }
+    }
+
     try {
       // Satış kullanıcıları için branchId'yi userBranchId'den al
       const finalBranchId = formData.branchId || userBranchId;
       const finalBranchName = formData.branchName || userBranchName || '';
 
       // Products yapısını backend'in beklediği formata dönüştür
+      // ÖNEMLİ: Maliyet bilgisini de gönder!
       const formattedProducts = formData.products
         .filter(p => p.name.trim())
         .map(p => ({
           name: p.name,
           quantity: p.quantity || '1',
           size: p.size || '',
-          price: p.priceUSD || '0', // Backend price alanını bekliyor
-          cost: '0',
+          price: p.priceUSD || '0',
+          cost: p.cost || '0',                    // Gerçek maliyet
+          min_sale_price: p.minSalePrice || '0',  // Minimum satış fiyatı
+          product_id: p.productId,                // Ürün ID
           notes: p.notes || '',
           barcode: p.barcode || ''
         }));
+
+      // Toplam maliyet hesapla
+      const totalCost = formattedProducts.reduce((sum, p) => {
+        return sum + (parseFloat(p.quantity) * parseFloat(p.cost));
+      }, 0);
 
       // Backend'in beklediği veri yapısını oluştur
       const orderData = {
@@ -673,9 +834,17 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
         products: formattedProducts,
         payment_method: formData.paymentMethod,
         total: calculateTotal(),
+        total_cost: totalCost,                    // Toplam maliyet
         currency: selectedCurrency,
         passport_image: passportImage,
         created_at: new Date().toISOString(),
+        // Kârlılık bilgisi
+        profit_info: profitabilityResult ? {
+          net_profit: profitabilityResult.netProfit,
+          profit_margin: profitabilityResult.profitMargin,
+          risk_level: profitabilityResult.riskLevel,
+          force_approved: forceSubmit,
+        } : null,
       };
 
       const response = await fetchWithTimeout(API_ENDPOINTS.orders, {
@@ -708,13 +877,15 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       branchId: preservedBranchId,
       branchName: preservedBranchName,
       shipping: { salesman: '', conference: '', cruise: '', agency: '', agency_id: null, guide: '', guide_id: null, pax: '' },
-      products: [{ id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '' }],
+      products: [{ id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '', cost: '', minSalePrice: '' }],
       paymentMethod: '',
       customer: { nameSurname: '', email: '', phone: '', address: '', state: '', city: '', zipCode: '', country: '', passportNo: '', taxNo: '' },
     });
     setPassportImage(null);
     setCommissionPreview(null);
     setFilteredGuides(guides);
+    setProfitabilityResult(null);
+    setShowProfitWarning(false);
   };
 
   // Input renderer
@@ -1466,6 +1637,129 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
           </View>
         </View>
       </Modal>
+
+      {/* Kârlılık Uyarı Modal */}
+      <Modal visible={showProfitWarning} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.profitWarningModal]}>
+            {/* Header - Risk seviyesine göre renk */}
+            <View style={[
+              styles.profitWarningHeader,
+              profitabilityResult?.riskLevel === 'critical' && styles.profitWarningCritical,
+              profitabilityResult?.riskLevel === 'high' && styles.profitWarningHigh,
+            ]}>
+              <IconSymbol
+                name={profitabilityResult?.riskLevel === 'critical' ? 'alert-circle' : 'alert'}
+                size={32}
+                color="#FFF"
+              />
+              <ThemedText style={styles.profitWarningTitle}>
+                {profitabilityResult?.riskLevel === 'critical' ? 'ZARAR UYARISI!' : 'Düşük Kâr Marjı'}
+              </ThemedText>
+            </View>
+
+            {/* İçerik */}
+            <View style={styles.profitWarningContent}>
+              <ThemedText style={styles.profitWarningMessage}>
+                {profitabilityResult?.message}
+              </ThemedText>
+
+              {/* Detaylı hesaplama */}
+              <View style={styles.profitWarningDetails}>
+                <View style={styles.profitWarningRow}>
+                  <ThemedText style={styles.profitWarningLabel}>Satış Tutarı:</ThemedText>
+                  <ThemedText style={styles.profitWarningValue}>
+                    ${profitabilityResult?.totalRevenue.toFixed(2)}
+                  </ThemedText>
+                </View>
+                <View style={styles.profitWarningRow}>
+                  <ThemedText style={styles.profitWarningLabel}>KDV (%20):</ThemedText>
+                  <ThemedText style={[styles.profitWarningValue, { color: COLORS.error.main }]}>
+                    -${profitabilityResult?.taxAmount.toFixed(2)}
+                  </ThemedText>
+                </View>
+                <View style={styles.profitWarningRow}>
+                  <ThemedText style={styles.profitWarningLabel}>Komisyonlar:</ThemedText>
+                  <ThemedText style={[styles.profitWarningValue, { color: COLORS.error.main }]}>
+                    -${profitabilityResult?.commissions.toFixed(2)}
+                  </ThemedText>
+                </View>
+                <View style={styles.profitWarningRow}>
+                  <ThemedText style={styles.profitWarningLabel}>Maliyet:</ThemedText>
+                  <ThemedText style={[styles.profitWarningValue, { color: COLORS.error.main }]}>
+                    -${profitabilityResult?.totalCost.toFixed(2)}
+                  </ThemedText>
+                </View>
+                <View style={[styles.profitWarningRow, styles.profitWarningRowTotal]}>
+                  <ThemedText style={styles.profitWarningLabelTotal}>Net Kâr:</ThemedText>
+                  <ThemedText style={[
+                    styles.profitWarningValueTotal,
+                    { color: (profitabilityResult?.netProfit || 0) < 0 ? COLORS.error.main : COLORS.success.main }
+                  ]}>
+                    ${profitabilityResult?.netProfit.toFixed(2)}
+                  </ThemedText>
+                </View>
+                <View style={styles.profitWarningRow}>
+                  <ThemedText style={styles.profitWarningLabel}>Kâr Marjı:</ThemedText>
+                  <ThemedText style={[
+                    styles.profitWarningValue,
+                    { color: (profitabilityResult?.profitMargin || 0) < 5 ? COLORS.error.main : COLORS.success.main }
+                  ]}>
+                    %{profitabilityResult?.profitMargin.toFixed(1)}
+                  </ThemedText>
+                </View>
+              </View>
+
+              {/* Uyarı notu */}
+              {profitabilityResult?.riskLevel === 'critical' && (
+                <View style={styles.profitWarningNote}>
+                  <IconSymbol name="information" size={16} color={COLORS.error.main} />
+                  <ThemedText style={styles.profitWarningNoteText}>
+                    Bu satış onaylanırsa şirket zarar edecektir. Yönetici onayı gerekebilir.
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+
+            {/* Butonlar */}
+            <View style={styles.profitWarningButtons}>
+              <TouchableOpacity
+                style={styles.profitWarningCancelBtn}
+                onPress={() => {
+                  setShowProfitWarning(false);
+                  setProfitabilityResult(null);
+                }}
+              >
+                <ThemedText style={styles.profitWarningCancelText}>Fiyatı Düzenle</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.profitWarningConfirmBtn,
+                  profitabilityResult?.riskLevel === 'critical' && styles.profitWarningConfirmBtnDanger
+                ]}
+                onPress={() => {
+                  setShowProfitWarning(false);
+                  handleSubmit(true); // Force submit
+                }}
+              >
+                <ThemedText style={styles.profitWarningConfirmText}>
+                  {profitabilityResult?.riskLevel === 'critical' ? 'Yine de Kaydet' : 'Onayla ve Kaydet'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Loading Overlay for Profit Check */}
+      {isCheckingProfit && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color={COLORS.primary.accent} />
+            <ThemedText style={styles.loadingText}>Kârlılık kontrol ediliyor...</ThemedText>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -2114,5 +2408,147 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: RADIUS.lg,
+  },
+  // Kârlılık Uyarı Modal Stilleri
+  profitWarningModal: {
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    overflow: 'hidden',
+  },
+  profitWarningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    gap: SPACING.md,
+    backgroundColor: COLORS.warning.main,
+  },
+  profitWarningCritical: {
+    backgroundColor: COLORS.error.main,
+  },
+  profitWarningHigh: {
+    backgroundColor: COLORS.warning.main,
+  },
+  profitWarningTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFF',
+  },
+  profitWarningContent: {
+    padding: SPACING.lg,
+  },
+  profitWarningMessage: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  profitWarningDetails: {
+    backgroundColor: COLORS.light.surfaceSecondary,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+  profitWarningRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+  },
+  profitWarningRowTotal: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.md,
+  },
+  profitWarningLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
+  },
+  profitWarningValue: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.primary,
+  },
+  profitWarningLabelTotal: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  profitWarningValueTotal: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+  },
+  profitWarningNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.error.main + '15',
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    marginTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+  profitWarningNoteText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.error.main,
+  },
+  profitWarningButtons: {
+    flexDirection: 'row',
+    padding: SPACING.base,
+    gap: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
+  },
+  profitWarningCancelBtn: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.light.surfaceSecondary,
+    alignItems: 'center',
+  },
+  profitWarningCancelText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.secondary,
+  },
+  profitWarningConfirmBtn: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.warning.main,
+    alignItems: 'center',
+  },
+  profitWarningConfirmBtnDanger: {
+    backgroundColor: COLORS.error.main,
+  },
+  profitWarningConfirmText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: '#FFF',
+  },
+  // Loading Overlay
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  loadingContent: {
+    backgroundColor: COLORS.light.surface,
+    padding: SPACING.xl,
+    borderRadius: RADIUS.xl,
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  loadingText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.light.text.primary,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
 });
