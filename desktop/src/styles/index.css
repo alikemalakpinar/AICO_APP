@@ -1,0 +1,194 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+/* Custom component styles */
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply bg-primary-accent text-white hover:bg-blue-600 focus:ring-primary-accent;
+  }
+
+  .btn-secondary {
+    @apply bg-neutral-100 text-neutral-700 hover:bg-neutral-200 focus:ring-neutral-400;
+  }
+
+  .btn-success {
+    @apply bg-success-main text-white hover:bg-green-600 focus:ring-success-main;
+  }
+
+  .btn-danger {
+    @apply bg-error-main text-white hover:bg-red-600 focus:ring-error-main;
+  }
+
+  .btn-warning {
+    @apply bg-warning-main text-white hover:bg-orange-600 focus:ring-warning-main;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-card border border-neutral-200 p-6;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-card-hover transition-shadow duration-200;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 rounded-lg border border-neutral-300 bg-white text-neutral-800
+           placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-accent
+           focus:border-transparent transition-all duration-200;
+  }
+
+  .input-error {
+    @apply border-error-main focus:ring-error-main;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-neutral-600 mb-2;
+  }
+
+  .select {
+    @apply input appearance-none cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-position: right 12px center;
+    background-repeat: no-repeat;
+    background-size: 20px;
+    padding-right: 40px;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  .badge-error {
+    @apply bg-red-100 text-red-800;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 text-blue-800;
+  }
+
+  .table-container {
+    @apply w-full overflow-x-auto;
+  }
+
+  .table {
+    @apply w-full text-sm;
+  }
+
+  .table th {
+    @apply px-4 py-3 text-left font-semibold text-neutral-600 bg-neutral-50 border-b border-neutral-200;
+  }
+
+  .table td {
+    @apply px-4 py-3 border-b border-neutral-100;
+  }
+
+  .table tr:hover td {
+    @apply bg-neutral-50;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg text-neutral-300 hover:bg-white/10
+           hover:text-white transition-all duration-200 cursor-pointer;
+  }
+
+  .sidebar-item.active {
+    @apply bg-white/20 text-white font-medium;
+  }
+
+  .stat-card {
+    @apply card flex items-center gap-4;
+  }
+
+  .stat-icon {
+    @apply w-14 h-14 rounded-xl flex items-center justify-center;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in;
+  }
+
+  .modal-content {
+    @apply bg-white rounded-2xl shadow-modal max-w-lg w-full mx-4 max-h-[90vh] overflow-auto animate-slide-up;
+  }
+
+  .toast {
+    @apply fixed bottom-4 right-4 px-6 py-4 rounded-lg shadow-lg text-white font-medium animate-slide-up z-50;
+  }
+}
+
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  .card {
+    box-shadow: none;
+    border: 1px solid #e2e8f0;
+  }
+}

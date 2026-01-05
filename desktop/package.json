@@ -1,0 +1,64 @@
+{
+  "name": "aico-erp-desktop",
+  "version": "1.0.0",
+  "description": "AICO ERP - Profesyonel Turizm & Halı Ticareti Yönetim Sistemi",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3001 && npm run dev:electron\"",
+    "dev:react": "vite --port 3001",
+    "dev:electron": "electron .",
+    "build": "tsc && vite build",
+    "build:electron": "npm run build && electron-builder",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:linux": "npm run build && electron-builder --linux",
+    "preview": "vite preview"
+  },
+  "build": {
+    "appId": "com.aico.erp",
+    "productName": "AICO ERP",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "public/icon.png"
+    }
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "lucide-react": "^0.294.0",
+    "recharts": "^2.10.3",
+    "date-fns": "^2.30.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0"
+  }
+}
