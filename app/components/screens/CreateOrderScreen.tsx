@@ -9,6 +9,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS, fetchWithTimeout, API_BASE_URL } from '../../../constants/Api';
+
+// Acenta ve Rehber tipleri
+interface Agency {
+  id: number;
+  code: string;
+  name: string;
+  region: string;
+  commission_rate: number;
+  contact_person: string;
+  phone: string;
+}
+
+interface Guide {
+  id: number;
+  agency_id: number | null;
+  name: string;
+  badge_number: string;
+  phone: string;
+  commission_rate: number;
+  agency_name?: string;
+}
+
+interface CommissionPreview {
+  grossTotal: number;
+  taxRate: number;
+  taxAmount: number;
+  netBase: number;
+  agencyRate: number;
+  agencyAmt: number;
+  guideRate: number;
+  guideAmt: number;
+  netCompany: number;
+}
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '../../../constants/Theme';
 
 const { width, height } = Dimensions.get('window');
@@ -183,6 +216,15 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
   const [showBranchPicker, setShowBranchPicker] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
+  // Acenta ve Rehber state'leri
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [guides, setGuides] = useState<Guide[]>([]);
+  const [filteredGuides, setFilteredGuides] = useState<Guide[]>([]);
+  const [showAgencyPicker, setShowAgencyPicker] = useState(false);
+  const [showGuidePicker, setShowGuidePicker] = useState(false);
+  const [commissionPreview, setCommissionPreview] = useState<CommissionPreview | null>(null);
+  const [isLoadingCommission, setIsLoadingCommission] = useState(false);
+
   const [formData, setFormData] = useState({
     // Temel Bilgiler
     date: new Date().toISOString().split('T')[0],
@@ -196,7 +238,9 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       conference: '',
       cruise: '',
       agency: '',
+      agency_id: null as number | null,
       guide: '',
+      guide_id: null as number | null,
       pax: '',
     },
 
@@ -233,6 +277,8 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
   useEffect(() => {
     fetchExchangeRates();
     fetchBranches();
+    fetchAgencies();
+    fetchGuides();
   }, []);
 
   // Kullanıcı zaten bir şubeyle giriş yaptıysa otomatik şube seçimi yap
@@ -291,6 +337,118 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       setBranches(data);
     } catch (error) {
       console.error('Şubeler alınamadı:', error);
+    }
+  };
+
+  // Acentaları getir
+  const fetchAgencies = async () => {
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.agencies);
+      const data = await response.json();
+      setAgencies(data);
+    } catch (error) {
+      console.error('Acentalar alınamadı:', error);
+    }
+  };
+
+  // Rehberleri getir
+  const fetchGuides = async () => {
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.guides);
+      const data = await response.json();
+      setGuides(data);
+      setFilteredGuides(data);
+    } catch (error) {
+      console.error('Rehberler alınamadı:', error);
+    }
+  };
+
+  // Acenta seçildiğinde rehberleri filtrele
+  const handleAgencySelect = (agency: Agency | null) => {
+    if (agency) {
+      setFormData(prev => ({
+        ...prev,
+        shipping: {
+          ...prev.shipping,
+          agency: agency.name,
+          agency_id: agency.id,
+          guide: '',
+          guide_id: null
+        }
+      }));
+      // Seçilen acentanın rehberlerini filtrele (serbest rehberler dahil)
+      const filtered = guides.filter(g => g.agency_id === agency.id || g.agency_id === null);
+      setFilteredGuides(filtered);
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        shipping: {
+          ...prev.shipping,
+          agency: '',
+          agency_id: null,
+          guide: '',
+          guide_id: null
+        }
+      }));
+      setFilteredGuides(guides);
+    }
+    setShowAgencyPicker(false);
+    // Komisyon önizlemesini güncelle
+    calculateCommissionPreview();
+  };
+
+  // Rehber seçildiğinde
+  const handleGuideSelect = (guide: Guide | null) => {
+    if (guide) {
+      setFormData(prev => ({
+        ...prev,
+        shipping: {
+          ...prev.shipping,
+          guide: guide.name,
+          guide_id: guide.id
+        }
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        shipping: {
+          ...prev.shipping,
+          guide: '',
+          guide_id: null
+        }
+      }));
+    }
+    setShowGuidePicker(false);
+    // Komisyon önizlemesini güncelle
+    calculateCommissionPreview();
+  };
+
+  // Komisyon önizlemesi hesapla
+  const calculateCommissionPreview = async () => {
+    const total = calculateTotal();
+    if (total <= 0) {
+      setCommissionPreview(null);
+      return;
+    }
+
+    setIsLoadingCommission(true);
+    try {
+      const response = await fetchWithTimeout(API_ENDPOINTS.commissionPreview, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agency_id: formData.shipping.agency_id,
+          guide_id: formData.shipping.guide_id,
+          total: total,
+          tax_rate: 20
+        })
+      });
+      const data = await response.json();
+      setCommissionPreview(data);
+    } catch (error) {
+      console.error('Komisyon hesaplanamadı:', error);
+    } finally {
+      setIsLoadingCommission(false);
     }
   };
 
@@ -504,9 +662,14 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
           conference: formData.shipping.conference,
           cruise: formData.shipping.cruise,
           agency: formData.shipping.agency,
+          agency_id: formData.shipping.agency_id,
           guide: formData.shipping.guide,
+          guide_id: formData.shipping.guide_id,
           pax: formData.shipping.pax,
         },
+        // Komisyon için ID'ler (üst seviyede de gönder)
+        agency_id: formData.shipping.agency_id,
+        guide_id: formData.shipping.guide_id,
         products: formattedProducts,
         payment_method: formData.paymentMethod,
         total: calculateTotal(),
@@ -544,12 +707,14 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
       orderNo: `ORD-${Date.now().toString().slice(-6)}`,
       branchId: preservedBranchId,
       branchName: preservedBranchName,
-      shipping: { salesman: '', conference: '', cruise: '', agency: '', guide: '', pax: '' },
+      shipping: { salesman: '', conference: '', cruise: '', agency: '', agency_id: null, guide: '', guide_id: null, pax: '' },
       products: [{ id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, name: '', quantity: '1', size: '', priceUSD: '', barcode: '', notes: '' }],
       paymentMethod: '',
       customer: { nameSurname: '', email: '', phone: '', address: '', state: '', city: '', zipCode: '', country: '', passportNo: '', taxNo: '' },
     });
     setPassportImage(null);
+    setCommissionPreview(null);
+    setFilteredGuides(guides);
   };
 
   // Input renderer
@@ -665,17 +830,86 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
         (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, cruise: text } })),
         { placeholder: 'Cruise bilgisi' }
       )}
-      {renderInput('Acenta', formData.shipping.agency,
-        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, agency: text } })),
-        { placeholder: 'Acenta adı' }
-      )}
-      {renderInput('Rehber', formData.shipping.guide,
-        (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, guide: text } })),
-        { placeholder: 'Rehber adı' }
-      )}
+
+      {/* Acenta Seçimi - Dropdown */}
+      <View style={styles.inputContainer}>
+        <ThemedText style={styles.inputLabel}>Acenta</ThemedText>
+        <TouchableOpacity style={styles.selectInput} onPress={() => setShowAgencyPicker(true)}>
+          <View style={{ flex: 1 }}>
+            <ThemedText style={formData.shipping.agency ? styles.selectText : styles.selectPlaceholder}>
+              {formData.shipping.agency || 'Acenta seçiniz...'}
+            </ThemedText>
+            {formData.shipping.agency_id && (
+              <ThemedText style={styles.selectSubtext}>
+                {agencies.find(a => a.id === formData.shipping.agency_id)?.commission_rate || 0}% komisyon
+              </ThemedText>
+            )}
+          </View>
+          <IconSymbol name="chevron-down" size={20} color={COLORS.neutral[500]} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Rehber Seçimi - Dropdown (Acenta seçildikten sonra aktif) */}
+      <View style={styles.inputContainer}>
+        <ThemedText style={styles.inputLabel}>Rehber</ThemedText>
+        <TouchableOpacity
+          style={[styles.selectInput, !formData.shipping.agency_id && styles.selectInputDisabled]}
+          onPress={() => formData.shipping.agency_id && setShowGuidePicker(true)}
+          disabled={!formData.shipping.agency_id}
+        >
+          <View style={{ flex: 1 }}>
+            <ThemedText style={formData.shipping.guide ? styles.selectText : styles.selectPlaceholder}>
+              {formData.shipping.guide || (formData.shipping.agency_id ? 'Rehber seçiniz...' : 'Önce acenta seçin')}
+            </ThemedText>
+            {formData.shipping.guide_id && (
+              <ThemedText style={styles.selectSubtext}>
+                {guides.find(g => g.id === formData.shipping.guide_id)?.commission_rate || 0}% komisyon
+              </ThemedText>
+            )}
+          </View>
+          <IconSymbol name="chevron-down" size={20} color={formData.shipping.agency_id ? COLORS.neutral[500] : COLORS.neutral[300]} />
+        </TouchableOpacity>
+      </View>
+
       {renderInput('PAX', formData.shipping.pax,
         (text) => setFormData(prev => ({ ...prev, shipping: { ...prev.shipping, pax: text } })),
         { placeholder: 'Yolcu sayısı', keyboardType: 'numeric' }
+      )}
+
+      {/* Komisyon Önizleme Kartı */}
+      {(formData.shipping.agency_id || formData.shipping.guide_id) && (
+        <View style={styles.commissionPreviewCard}>
+          <View style={styles.commissionPreviewHeader}>
+            <IconSymbol name="calculator" size={20} color={COLORS.secondary.gold} />
+            <ThemedText style={styles.commissionPreviewTitle}>Komisyon Özeti</ThemedText>
+          </View>
+          {isLoadingCommission ? (
+            <ActivityIndicator size="small" color={COLORS.primary.accent} />
+          ) : commissionPreview ? (
+            <View style={styles.commissionPreviewContent}>
+              <View style={styles.commissionRow}>
+                <ThemedText style={styles.commissionLabel}>Acenta Komisyonu</ThemedText>
+                <ThemedText style={styles.commissionValue}>
+                  %{commissionPreview.agencyRate} → ${commissionPreview.agencyAmt.toFixed(2)}
+                </ThemedText>
+              </View>
+              <View style={styles.commissionRow}>
+                <ThemedText style={styles.commissionLabel}>Rehber Komisyonu</ThemedText>
+                <ThemedText style={styles.commissionValue}>
+                  %{commissionPreview.guideRate} → ${commissionPreview.guideAmt.toFixed(2)}
+                </ThemedText>
+              </View>
+              <View style={[styles.commissionRow, styles.commissionRowTotal]}>
+                <ThemedText style={styles.commissionLabelTotal}>Şirkete Kalan</ThemedText>
+                <ThemedText style={styles.commissionValueTotal}>
+                  ${commissionPreview.netCompany.toFixed(2)}
+                </ThemedText>
+              </View>
+            </View>
+          ) : (
+            <ThemedText style={styles.commissionNote}>Ürün ekleyerek komisyonu hesaplayın</ThemedText>
+          )}
+        </View>
       )}
     </View>
   );
@@ -1141,6 +1375,97 @@ export default function CreateOrderScreen({ userBranchId, userBranchName, userRo
         },
         () => setShowCurrencyPicker(false)
       )}
+
+      {/* Acenta Seçim Modal */}
+      <Modal visible={showAgencyPicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Acenta Seçin</ThemedText>
+              <TouchableOpacity onPress={() => setShowAgencyPicker(false)}>
+                <IconSymbol name="close" size={24} color={COLORS.neutral[600]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {/* Acenta Yok seçeneği */}
+              <TouchableOpacity
+                style={[styles.modalItem, !formData.shipping.agency_id && styles.modalItemSelected]}
+                onPress={() => handleAgencySelect(null)}
+              >
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={styles.modalItemText}>Acenta Yok</ThemedText>
+                  <ThemedText style={styles.modalItemSubtext}>Direkt satış</ThemedText>
+                </View>
+              </TouchableOpacity>
+              {agencies.map((agency) => (
+                <TouchableOpacity
+                  key={agency.id}
+                  style={[styles.modalItem, formData.shipping.agency_id === agency.id && styles.modalItemSelected]}
+                  onPress={() => handleAgencySelect(agency)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={[styles.modalItemText, formData.shipping.agency_id === agency.id && styles.modalItemTextSelected]}>
+                      {agency.name}
+                    </ThemedText>
+                    <ThemedText style={styles.modalItemSubtext}>
+                      {agency.region} • %{agency.commission_rate} komisyon
+                    </ThemedText>
+                  </View>
+                  {formData.shipping.agency_id === agency.id && (
+                    <IconSymbol name="check" size={20} color={COLORS.primary.accent} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rehber Seçim Modal */}
+      <Modal visible={showGuidePicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Rehber Seçin</ThemedText>
+              <TouchableOpacity onPress={() => setShowGuidePicker(false)}>
+                <IconSymbol name="close" size={24} color={COLORS.neutral[600]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {/* Rehber Yok seçeneği */}
+              <TouchableOpacity
+                style={[styles.modalItem, !formData.shipping.guide_id && styles.modalItemSelected]}
+                onPress={() => handleGuideSelect(null)}
+              >
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={styles.modalItemText}>Rehber Yok</ThemedText>
+                  <ThemedText style={styles.modalItemSubtext}>Rehber komisyonu yok</ThemedText>
+                </View>
+              </TouchableOpacity>
+              {filteredGuides.map((guide) => (
+                <TouchableOpacity
+                  key={guide.id}
+                  style={[styles.modalItem, formData.shipping.guide_id === guide.id && styles.modalItemSelected]}
+                  onPress={() => handleGuideSelect(guide)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={[styles.modalItemText, formData.shipping.guide_id === guide.id && styles.modalItemTextSelected]}>
+                      {guide.name}
+                    </ThemedText>
+                    <ThemedText style={styles.modalItemSubtext}>
+                      {guide.badge_number} • %{guide.commission_rate} komisyon
+                      {guide.agency_id === null && ' • Serbest'}
+                    </ThemedText>
+                  </View>
+                  {formData.shipping.guide_id === guide.id && (
+                    <IconSymbol name="check" size={20} color={COLORS.primary.accent} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1628,6 +1953,79 @@ const styles = StyleSheet.create({
   modalItemTextSelected: {
     color: COLORS.primary.accent,
     fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  modalItemSubtext: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.neutral[500],
+    marginTop: 2,
+  },
+  selectSubtext: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.secondary.gold,
+    marginTop: 2,
+  },
+  selectInputDisabled: {
+    opacity: 0.5,
+    backgroundColor: COLORS.light.surfaceSecondary,
+  },
+  commissionPreviewCard: {
+    backgroundColor: COLORS.light.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.base,
+    marginTop: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.secondary.gold + '40',
+  },
+  commissionPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  commissionPreviewTitle: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  commissionPreviewContent: {
+    gap: SPACING.sm,
+  },
+  commissionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+  },
+  commissionRowTotal: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.light.border,
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.md,
+  },
+  commissionLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.light.text.secondary,
+  },
+  commissionValue: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    color: COLORS.light.text.primary,
+  },
+  commissionLabelTotal: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semiBold,
+    color: COLORS.light.text.primary,
+  },
+  commissionValueTotal: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.success.main,
+  },
+  commissionNote: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.neutral[400],
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   scannerContainer: {
     flex: 1,

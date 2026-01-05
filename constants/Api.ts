@@ -80,6 +80,22 @@ export const API_ENDPOINTS = {
   // Order Updates
   orderPassport: (orderId: number) => `${API_BASE_URL}/api/orders/${orderId}/passport`,
   orderSignature: (orderId: number) => `${API_BASE_URL}/api/orders/${orderId}/signature`,
+  // ==================== ACENTA & REHBER (ERP) ====================
+  // Acentalar (Agencies)
+  agencies: `${API_BASE_URL}/api/agencies`,
+  agency: (id: number) => `${API_BASE_URL}/api/agencies/${id}`,
+  agencyGuides: (id: number) => `${API_BASE_URL}/api/agencies/${id}/guides`,
+  // Rehberler (Guides)
+  guides: `${API_BASE_URL}/api/guides`,
+  guide: (id: number) => `${API_BASE_URL}/api/guides/${id}`,
+  guidePayment: (id: number) => `${API_BASE_URL}/api/guides/${id}/payment`,
+  // Komisyon Kuralları
+  commissionRules: `${API_BASE_URL}/api/commission-rules`,
+  commissionPreview: `${API_BASE_URL}/api/commission-preview`,
+  // Finansal Raporlar
+  reportsAgencyCommissions: `${API_BASE_URL}/api/reports/agency-commissions`,
+  reportsGuideCommissions: `${API_BASE_URL}/api/reports/guide-commissions`,
+  reportsFinancialSummary: `${API_BASE_URL}/api/reports/financial-summary`,
 };
 
 // Fetch with timeout wrapper
