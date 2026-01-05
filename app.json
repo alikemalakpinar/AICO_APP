@@ -7,6 +7,8 @@
     "icon": "./assets/images/icon.png",
     "scheme": "aico",
     "userInterfaceStyle": "automatic",
+    "platforms": ["ios", "android", "web"],
+    "sdkVersion": "54.0.0",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,

@@ -48,6 +48,17 @@ try {
 
 const db = sqlite3(dbPath);
 
+function addColumnIfNotExists(table, column, type) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  const exists = columns.some(c => c.name === column);
+
+  if (!exists) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    console.log(`Added column ${column} to ${table} table`);
+  }
+}
+
+
 // ==================== DATABASE TABLES ====================
 
 // Users tablosu
@@ -227,6 +238,30 @@ db.exec(`
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   )
 `);
+// ==================== MIGRATIONS ====================
+
+// urunler tablosu migration
+addColumnIfNotExists('urunler', 'sku', 'TEXT');
+addColumnIfNotExists('urunler', 'barcode', 'TEXT');
+addColumnIfNotExists('urunler', 'category', 'TEXT');
+addColumnIfNotExists('urunler', 'default_price', 'REAL');
+addColumnIfNotExists('urunler', 'default_cost', 'REAL');
+addColumnIfNotExists('urunler', 'price_local', 'REAL');
+addColumnIfNotExists('urunler', 'price_usd', 'REAL');
+addColumnIfNotExists('urunler', 'currency', "TEXT DEFAULT 'TRY'");
+addColumnIfNotExists('urunler', 'width', 'REAL');
+addColumnIfNotExists('urunler', 'height', 'REAL');
+addColumnIfNotExists('urunler', 'sqm', 'REAL');
+addColumnIfNotExists('urunler', 'unit_type', "TEXT DEFAULT 'piece'");
+addColumnIfNotExists('urunler', 'sizes', 'TEXT');
+addColumnIfNotExists('urunler', 'description', 'TEXT');
+addColumnIfNotExists('urunler', 'in_stock', 'INTEGER DEFAULT 1');
+addColumnIfNotExists('urunler', 'stock_quantity', 'INTEGER DEFAULT 0');
+addColumnIfNotExists('urunler', 'min_stock_alert', 'INTEGER DEFAULT 5');
+addColumnIfNotExists('urunler', 'branch_id', 'INTEGER');
+addColumnIfNotExists('urunler', 'images', 'TEXT');
+addColumnIfNotExists('urunler', 'updated_at', 'TEXT');
+
 
 // Migration: Add new columns to siparisler table if they don't exist
 const siparislerColumns = db.prepare("PRAGMA table_info(siparisler)").all().map(c => c.name);
