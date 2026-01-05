@@ -96,6 +96,24 @@ export const API_ENDPOINTS = {
   reportsAgencyCommissions: `${API_BASE_URL}/api/reports/agency-commissions`,
   reportsGuideCommissions: `${API_BASE_URL}/api/reports/guide-commissions`,
   reportsFinancialSummary: `${API_BASE_URL}/api/reports/financial-summary`,
+  // ==================== GOLDIST ERP MODÜLLER ====================
+  // Operasyonlar (Grup Giriş/Çıkış)
+  operations: `${API_BASE_URL}/api/operations`,
+  operationsActive: `${API_BASE_URL}/api/operations/active`,
+  operationCheckout: (id: number) => `${API_BASE_URL}/api/operations/${id}/checkout`,
+  // Kârlılık Analizi
+  profitabilityCheck: `${API_BASE_URL}/api/profitability-check`,
+  // Çoklu Ödeme (Split Payment)
+  orderPayments: (orderId: number) => `${API_BASE_URL}/api/orders/${orderId}/payments`,
+  // Kargo Takip
+  orderShipping: (orderId: number) => `${API_BASE_URL}/api/orders/${orderId}/shipping`,
+  shippingStatus: (id: number) => `${API_BASE_URL}/api/shipping/${id}/status`,
+  // Mal Sahipleri (Konsinye)
+  consignmentOwners: `${API_BASE_URL}/api/consignment-owners`,
+  consignmentOwnerAccount: (id: number) => `${API_BASE_URL}/api/consignment-owners/${id}/account`,
+  // Dashboard
+  dashboardLiveStatus: `${API_BASE_URL}/api/dashboard/live-status`,
+  dashboardFinancialOverview: `${API_BASE_URL}/api/dashboard/financial-overview`,
 };
 
 // Fetch with timeout wrapper
